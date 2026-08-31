@@ -15,6 +15,12 @@ export interface FeedbackWidgetProps {
    * automatisch upstream, ohne dass jemand Project-Leads briefen muss.
    */
   platformOptionLabel?: string;
+  /**
+   * Kleiner runder Käfer-Knopf statt der Pille mit Text-Label. Opt-in, damit
+   * bestehende Einbindungen unverändert bleiben (Sören, 31.08.2026: die
+   * grosse Pille lenkte zu sehr ab). Das Formular dahinter ist identisch.
+   */
+  compact?: boolean;
 }
 
 export function FeedbackWidget({
@@ -22,6 +28,7 @@ export function FeedbackWidget({
   brandColor = "#e20074",
   label = "Feedback",
   platformOptionLabel,
+  compact = false,
 }: FeedbackWidgetProps) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<"bug" | "feature">("feature");
@@ -46,14 +53,21 @@ export function FeedbackWidget({
       <button
         type="button"
         onClick={() => { setOpen(true); setSent(false); }}
-        style={{
+        title={compact ? label : undefined}
+        aria-label={compact ? label : undefined}
+        style={compact ? {
+          position: "fixed", right: 20, bottom: 20, zIndex: 50,
+          width: 40, height: 40, borderRadius: "50%", border: "none",
+          background: brandColor, fontSize: 18, lineHeight: "40px", textAlign: "center",
+          cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.25)", padding: 0,
+        } : {
           position: "fixed", right: 20, bottom: 20, zIndex: 50,
           padding: "10px 16px", borderRadius: 999, border: "none",
           background: brandColor, color: "#fff", fontWeight: 600, fontSize: 14,
           cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
         }}
       >
-        {label}
+        {compact ? "🐞" : label}
       </button>
 
       {open && (

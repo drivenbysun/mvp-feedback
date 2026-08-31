@@ -47,6 +47,13 @@ import { sendFeedback } from "./feedback-action";
 <FeedbackWidget action={sendFeedback} brandColor="#e20074" />
 ```
 
+Standardmäßig eine Pille mit Text-Label unten rechts. Mit `compact` stattdessen
+ein kleiner runder Knopf (🐞) — das Formular dahinter ist identisch, nur der
+Aufmacher ist unauffälliger (Sören/agency-os, 31.08.2026):
+```tsx
+<FeedbackWidget action={sendFeedback} brandColor="#e20074" compact />
+```
+
 ## Datei-Anhänge (Screenshots etc.)
 Das Widget hat ein Datei-Feld. Anhänge werden als **GitHub-Release-Assets** am Release
 `feedback-attachments` hochgeladen (Tag via `attachmentReleaseTag` überschreibbar) und im
