@@ -21,6 +21,20 @@ export interface FeedbackWidgetProps {
    * grosse Pille lenkte zu sehr ab). Das Formular dahinter ist identisch.
    */
   compact?: boolean;
+  /**
+   * Wo der schwebende Knopf sitzt. Default unverändert unten rechts, damit
+   * bestehende Einbindungen gleich bleiben (Sören, agency-os, 01.09.2026:
+   * "bug button rechts weg und links unter versions nummer").
+   */
+  position?: "bottom-right" | "bottom-left";
+  /**
+   * `"emoji"` (Default, unverändert) zeigt 🐞 in `brandColor`. `"mono"`
+   * zeigt stattdessen ein einfarbiges SVG-Käfer-Symbol in `iconColor` — für
+   * Sidebars/Ecken, in denen ein bunter Emoji-Kreis nicht zum Rest passt.
+   */
+  compactIcon?: "emoji" | "mono";
+  /** Nur bei `compactIcon="mono"` relevant. */
+  iconColor?: string;
 }
 
 export function FeedbackWidget({
@@ -29,12 +43,18 @@ export function FeedbackWidget({
   label = "Feedback",
   platformOptionLabel,
   compact = false,
+  position = "bottom-right",
+  compactIcon = "emoji",
+  iconColor = "#fff",
 }: FeedbackWidgetProps) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<"bug" | "feature">("feature");
   const [platform, setPlatform] = useState(false);
   const [fileNames, setFileNames] = useState<string[]>([]);
   const [sent, setSent] = useState(false);
+
+  const cornerStyle: React.CSSProperties =
+    position === "bottom-left" ? { left: 20, right: "auto" } : { right: 20, left: "auto" };
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
     flex: 1,
@@ -56,18 +76,28 @@ export function FeedbackWidget({
         title={compact ? label : undefined}
         aria-label={compact ? label : undefined}
         style={compact ? {
-          position: "fixed", right: 20, bottom: 20, zIndex: 50,
+          position: "fixed", bottom: 20, zIndex: 50, ...cornerStyle,
           width: 40, height: 40, borderRadius: "50%", border: "none",
-          background: brandColor, fontSize: 18, lineHeight: "40px", textAlign: "center",
-          cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.25)", padding: 0,
+          background: compactIcon === "mono" ? "transparent" : brandColor,
+          fontSize: 18, lineHeight: "40px", textAlign: "center",
+          cursor: "pointer",
+          boxShadow: compactIcon === "mono" ? "none" : "0 4px 14px rgba(0,0,0,0.25)",
+          padding: 0,
         } : {
-          position: "fixed", right: 20, bottom: 20, zIndex: 50,
+          position: "fixed", bottom: 20, zIndex: 50, ...cornerStyle,
           padding: "10px 16px", borderRadius: 999, border: "none",
           background: brandColor, color: "#fff", fontWeight: 600, fontSize: 14,
           cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
         }}
       >
-        {compact ? "🐞" : label}
+        {compact ? (
+          compactIcon === "mono" ? (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", margin: "10px auto" }}>
+              <path d="M8 2v2M16 2v2M12 20v-9M12 20a5 5 0 0 0 5-5V9a5 5 0 0 0-10 0v6a5 5 0 0 0 5 5Z" />
+              <path d="M6 12H3M21 12h-3M6 8l-2-2M20 8l-2-2M6 16l-2 2M20 16l2 2" />
+            </svg>
+          ) : "🐞"
+        ) : label}
       </button>
 
       {open && (
