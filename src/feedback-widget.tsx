@@ -36,6 +36,12 @@ export interface FeedbackWidgetProps {
   /** Nur bei `compactIcon="mono"` relevant. */
   iconColor?: string;
   /**
+   * Hintergrundfarbe des runden Knopfs bei `compactIcon="mono"`. Default
+   * "transparent" (unverändert). Sören, agency-os, 02.09.2026: "wie bei
+   * staffhub" — dort ein schwarzer Kreis hinter dem weissen Käfer-Icon.
+   */
+  bgColor?: string;
+  /**
    * Durchmesser des runden Knopfs in px, nur bei `compact`. Default 40
    * (unverändert). Icon und Emoji skalieren proportional mit (Sören,
    * agency-os, 02.09.2026: "käfer 30% grösser" → `size={52}`).
@@ -52,6 +58,7 @@ export function FeedbackWidget({
   position = "bottom-right",
   compactIcon = "emoji",
   iconColor = "#fff",
+  bgColor = "transparent",
   size = 40,
 }: FeedbackWidgetProps) {
   const [open, setOpen] = useState(false);
@@ -85,10 +92,10 @@ export function FeedbackWidget({
         style={compact ? {
           position: "fixed", bottom: 20, zIndex: 50, ...cornerStyle,
           width: size, height: size, borderRadius: "50%", border: "none",
-          background: compactIcon === "mono" ? "transparent" : brandColor,
+          background: compactIcon === "mono" ? bgColor : brandColor,
           fontSize: Math.round(size * 0.45), lineHeight: `${size}px`, textAlign: "center",
           cursor: "pointer",
-          boxShadow: compactIcon === "mono" ? "none" : "0 4px 14px rgba(0,0,0,0.25)",
+          boxShadow: compactIcon === "mono" && bgColor === "transparent" ? "none" : "0 4px 14px rgba(0,0,0,0.25)",
           padding: 0,
           display: "flex", alignItems: "center", justifyContent: "center",
         } : {
