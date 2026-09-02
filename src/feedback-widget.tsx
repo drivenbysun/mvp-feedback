@@ -35,6 +35,12 @@ export interface FeedbackWidgetProps {
   compactIcon?: "emoji" | "mono";
   /** Nur bei `compactIcon="mono"` relevant. */
   iconColor?: string;
+  /**
+   * Durchmesser des runden Knopfs in px, nur bei `compact`. Default 40
+   * (unverändert). Icon und Emoji skalieren proportional mit (Sören,
+   * agency-os, 02.09.2026: "käfer 30% grösser" → `size={52}`).
+   */
+  size?: number;
 }
 
 export function FeedbackWidget({
@@ -46,6 +52,7 @@ export function FeedbackWidget({
   position = "bottom-right",
   compactIcon = "emoji",
   iconColor = "#fff",
+  size = 40,
 }: FeedbackWidgetProps) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<"bug" | "feature">("feature");
@@ -77,12 +84,13 @@ export function FeedbackWidget({
         aria-label={compact ? label : undefined}
         style={compact ? {
           position: "fixed", bottom: 20, zIndex: 50, ...cornerStyle,
-          width: 40, height: 40, borderRadius: "50%", border: "none",
+          width: size, height: size, borderRadius: "50%", border: "none",
           background: compactIcon === "mono" ? "transparent" : brandColor,
-          fontSize: 18, lineHeight: "40px", textAlign: "center",
+          fontSize: Math.round(size * 0.45), lineHeight: `${size}px`, textAlign: "center",
           cursor: "pointer",
           boxShadow: compactIcon === "mono" ? "none" : "0 4px 14px rgba(0,0,0,0.25)",
           padding: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
         } : {
           position: "fixed", bottom: 20, zIndex: 50, ...cornerStyle,
           padding: "10px 16px", borderRadius: 999, border: "none",
@@ -92,7 +100,7 @@ export function FeedbackWidget({
       >
         {compact ? (
           compactIcon === "mono" ? (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", margin: "10px auto" }}>
+            <svg width={Math.round(size * 0.5)} height={Math.round(size * 0.5)} viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
               <path d="M8 2v2M16 2v2M12 20v-9M12 20a5 5 0 0 0 5-5V9a5 5 0 0 0-10 0v6a5 5 0 0 0 5 5Z" />
               <path d="M6 12H3M21 12h-3M6 8l-2-2M20 8l-2-2M6 16l-2 2M20 16l2 2" />
             </svg>
