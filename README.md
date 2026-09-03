@@ -71,6 +71,29 @@ const nextConfig = {
 };
 ```
 
+## Seiten-Pfad erfassen (`sanitizePagePath`)
+Damit eine Meldung nachvollziehbar bleibt (welche Seite betraf es?), ohne dabei
+versehentlich Zugangsdaten mitzuschicken: `sanitizePagePath(wert)` kappt IMMER
+Abfrageparameter und alles hinter `#`, egal wie sie heißen (keine Erlaubnis-
+oder Verbotsliste — Wiederherstellungs-/Einladungslinks und OAuth-Callbacks
+tragen Einmal-Kennungen dort, z. B. `/auth/callback?code=…`). Liefert **nur den
+Pfad**, keine Herkunft. Wirft nie — bei Müll oder leerer Eingabe kommt ein
+leerer oder bestmöglich gekürzter String zurück, eine Meldung darf nie an ihrer
+eigenen Seiten-Angabe scheitern.
+
+Dieselbe Funktion für beide Seiten, damit sie nicht auseinanderlaufen können:
+```ts
+// Client, beim Absenden:
+import { sanitizePagePath } from "mvp-feedback";
+const seite = sanitizePagePath(window.location.href);
+
+// Server, vor dem Speichern — IMMER anwenden, auch wenn der Client es
+// schon getan hat. Eine Bereinigung, die nur der Absender macht, ist
+// keine Bereinigung.
+import { sanitizePagePath } from "mvp-feedback/server";
+const seite = sanitizePagePath(eingehenderWert);
+```
+
 ## Runtime-Voraussetzung
 `GH_PROJECT_TOKEN` (oder `config.tokenEnv`) = GitHub-Token mit `repo` (+ `project` fürs Board;
 `contents`/Releases-Schreibrecht für Anhänge) als Server-Env (z. B. Vercel). Ohne Token:
