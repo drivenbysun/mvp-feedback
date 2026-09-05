@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 // Self-styled (Inline-Styles) → keine CSS-Abhängigkeit, läuft in jedem Projekt.
 // Der Consumer reicht die Server-Action rein (bekommt FormData: kind, text).
@@ -47,6 +47,18 @@ export interface FeedbackWidgetProps {
    * agency-os, 02.09.2026: "käfer 30% grösser" → `size={52}`).
    */
   size?: number;
+  /**
+   * Eigenes Icon statt emoji/mono, z.B. ein Icon aus der eigenen
+   * Icon-Bibliothek des Consumers (Tabler, Lucide, ...). Übernimmt NICHT
+   * automatisch `iconColor`/Größe — der Consumer bringt sein Icon fertig
+   * dimensioniert und eingefärbt mit, das Widget setzt es nur in den
+   * runden Knopf. Grund: jede weitere feste Icon-Variante (nach emoji,
+   * mono) hätte dieselbe Anfrage nur verschoben, statt sie zu lösen
+   * (agency-os, 06.09.2026: "wie bei StaffHub" — deren Knopf nutzt
+   * `@tabler/icons-react`, eine Bibliothek, die dieses Paket nicht
+   * kennen soll).
+   */
+  customIcon?: ReactNode;
 }
 
 export function FeedbackWidget({
@@ -60,6 +72,7 @@ export function FeedbackWidget({
   iconColor = "#fff",
   bgColor = "transparent",
   size = 40,
+  customIcon,
 }: FeedbackWidgetProps) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<"bug" | "feature">("feature");
@@ -92,10 +105,10 @@ export function FeedbackWidget({
         style={compact ? {
           position: "fixed", bottom: 20, zIndex: 50, ...cornerStyle,
           width: size, height: size, borderRadius: "50%", border: "none",
-          background: compactIcon === "mono" ? bgColor : brandColor,
+          background: customIcon || compactIcon === "mono" ? bgColor : brandColor,
           fontSize: Math.round(size * 0.45), lineHeight: `${size}px`, textAlign: "center",
           cursor: "pointer",
-          boxShadow: compactIcon === "mono" && bgColor === "transparent" ? "none" : "0 4px 14px rgba(0,0,0,0.25)",
+          boxShadow: (customIcon || compactIcon === "mono") && bgColor === "transparent" ? "none" : "0 4px 14px rgba(0,0,0,0.25)",
           padding: 0,
           display: "flex", alignItems: "center", justifyContent: "center",
         } : {
@@ -106,7 +119,7 @@ export function FeedbackWidget({
         }}
       >
         {compact ? (
-          compactIcon === "mono" ? (
+          customIcon ? customIcon : compactIcon === "mono" ? (
             <svg width={Math.round(size * 0.5)} height={Math.round(size * 0.5)} viewBox="0 0 24 24" fill="none" stroke={iconColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
               <path d="M8 2v2M16 2v2M12 20v-9M12 20a5 5 0 0 0 5-5V9a5 5 0 0 0-10 0v6a5 5 0 0 0 5 5Z" />
               <path d="M6 12H3M21 12h-3M6 8l-2-2M20 8l-2-2M6 16l-2 2M20 16l2 2" />

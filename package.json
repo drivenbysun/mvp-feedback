@@ -1,6 +1,6 @@
 {
   "name": "mvp-feedback",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Config-getriebenes Feedback-Widget (Bug/Feature) → GitHub-Issue + Board. Für die drivenbysun MVP-Factory.",
   "type": "module",
   "exports": {
