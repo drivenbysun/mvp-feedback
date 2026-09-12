@@ -1,11 +1,33 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
+import { ScreenshotAnnotator } from "./screenshot-annotator";
+
+type ActionErgebnis = { ok: boolean; error?: string };
+
+function istFehlgeschlagenesErgebnis(wert: unknown): wert is { ok: false; error?: string } {
+  return typeof wert === "object" && wert !== null && "ok" in wert && (wert as { ok: unknown }).ok === false;
+}
+
+// Technische Fehlercodes aus submitFeedback in verstaendliche Saetze uebersetzen
+// -- niemand soll "text too short (min 10 chars)" im UI lesen.
+function fehlertext(code: string | undefined): string {
+  if (code?.startsWith("text too short")) return "Bitte etwas ausführlicher beschreiben.";
+  if (code === "rate limited") return "Kurz warten, bevor du erneut sendest.";
+  return "Konnte nicht gesendet werden. Bitte später erneut versuchen.";
+}
 
 // Self-styled (Inline-Styles) → keine CSS-Abhängigkeit, läuft in jedem Projekt.
 // Der Consumer reicht die Server-Action rein (bekommt FormData: kind, text).
 export interface FeedbackWidgetProps {
-  action: (formData: FormData) => void | Promise<void>;
+  /**
+   * Darf zusätzlich zu void ein `{ ok, error? }` zurückgeben (z. B. das
+   * `IntakeResult` von `submitFeedback`) -- dann zeigt das Widget bei
+   * `ok: false` einen Fehler statt "Danke" (sonst würde z. B. ein
+   * Rate-Limit oder eine zu kurze Meldung so aussehen wie ein Erfolg).
+   * Reine `void`-Actions (bestehende Einbindungen) verhalten sich unverändert.
+   */
+  action: (formData: FormData) => void | Promise<void> | ActionErgebnis | Promise<ActionErgebnis>;
   brandColor?: string;
   label?: string;
   /**
@@ -59,6 +81,22 @@ export interface FeedbackWidgetProps {
    * kennen soll).
    */
   customIcon?: ReactNode;
+  /**
+   * Mindestlänge fürs `minlength`-HTML-Attribut des Textfelds (Default: 10,
+   * passend zum Server-Default in `submitFeedback`). Rein clientseitiger
+   * Komfort -- die eigentliche Durchsetzung bleibt serverseitig. Wer die
+   * Server-`minLength` in der Config ändert, sollte diesen Wert mitziehen,
+   * sonst weichen Hinweistext und tatsächliche Regel voneinander ab.
+   */
+  minLength?: number;
+  /**
+   * Zeigt einen "Screenshot"-Knopf, der die Seite per html2canvas erfasst
+   * und eine Freihand-Markierung darüber erlaubt (aus StaffHubs Feedback-
+   * Modul übernommen). Default false/nicht geladen -- `html2canvas` wird
+   * nur bei tatsächlicher Nutzung per `import()` nachgeladen, damit Apps
+   * ohne dieses Feature kein zusätzliches Gewicht bekommen.
+   */
+  allowScreenshot?: boolean;
 }
 
 export function FeedbackWidget({
@@ -73,12 +111,50 @@ export function FeedbackWidget({
   bgColor = "transparent",
   size = 40,
   customIcon,
+  minLength = 10,
+  allowScreenshot = false,
 }: FeedbackWidgetProps) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<"bug" | "feature">("feature");
   const [platform, setPlatform] = useState(false);
   const [fileNames, setFileNames] = useState<string[]>([]);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [screenshotCanvas, setScreenshotCanvas] = useState<HTMLCanvasElement | null>(null);
+  const [capturing, setCapturing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function screenshotErfassen() {
+    setCapturing(true);
+    setOpen(false);
+    // Kurz warten, bis das Modal wirklich aus dem gerenderten Baum ist --
+    // sonst faengt html2canvas das eigene Overlay mit ein.
+    await new Promise((r) => setTimeout(r, 60));
+    try {
+      const { default: html2canvas } = await import("html2canvas");
+      const canvas = await html2canvas(document.body, { logging: false, useCORS: true });
+      setScreenshotCanvas(canvas);
+    } finally {
+      setCapturing(false);
+      setOpen(true);
+    }
+  }
+
+  function screenshotUebernehmen(blob: Blob) {
+    const datei = new File([blob], `screenshot-${Date.now()}.png`, { type: "image/png" });
+    const dt = new DataTransfer();
+    for (const f of Array.from(fileInputRef.current?.files ?? [])) dt.items.add(f);
+    dt.items.add(datei);
+    if (fileInputRef.current) fileInputRef.current.files = dt.files;
+    setFileNames(Array.from(dt.files).map((f) => f.name));
+    setScreenshotCanvas(null);
+  }
+
+  function schliessen() {
+    setOpen(false);
+    setError(null);
+    setScreenshotCanvas(null);
+  }
 
   const cornerStyle: React.CSSProperties =
     position === "bottom-left" ? { left: 20, right: "auto" } : { right: 20, left: "auto" };
@@ -99,7 +175,7 @@ export function FeedbackWidget({
     <>
       <button
         type="button"
-        onClick={() => { setOpen(true); setSent(false); }}
+        onClick={() => { setOpen(true); setSent(false); setError(null); setScreenshotCanvas(null); }}
         title={compact ? label : undefined}
         aria-label={compact ? label : undefined}
         style={compact ? {
@@ -130,7 +206,7 @@ export function FeedbackWidget({
 
       {open && (
         <div
-          onClick={() => setOpen(false)}
+          onClick={schliessen}
           style={{
             position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.5)",
             display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
@@ -150,15 +226,31 @@ export function FeedbackWidget({
                   Deine Meldung ist eingegangen.
                 </div>
                 <button
-                  onClick={() => setOpen(false)}
+                  onClick={schliessen}
                   style={{ marginTop: 14, padding: "8px 16px", borderRadius: 8, border: "1px solid #2e333d", background: "transparent", color: "inherit", cursor: "pointer" }}
                 >
                   Schließen
                 </button>
               </div>
+            ) : screenshotCanvas ? (
+              <ScreenshotAnnotator
+                quelle={screenshotCanvas}
+                brandColor={brandColor}
+                onUebernehmen={screenshotUebernehmen}
+                onAbbrechen={() => setScreenshotCanvas(null)}
+              />
             ) : (
               <form
-                action={async (fd) => { await action(fd); setFileNames([]); setSent(true); }}
+                action={async (fd) => {
+                  setError(null);
+                  const ergebnis = await action(fd);
+                  if (istFehlgeschlagenesErgebnis(ergebnis)) {
+                    setError(fehlertext(ergebnis.error));
+                    return;
+                  }
+                  setFileNames([]);
+                  setSent(true);
+                }}
               >
                 <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Feedback geben</div>
                 <input type="hidden" name="kind" value={kind} />
@@ -174,6 +266,7 @@ export function FeedbackWidget({
                 <textarea
                   name="text"
                   required
+                  minLength={minLength}
                   rows={5}
                   placeholder={kind === "bug" ? "Was ist passiert? Was hast du erwartet?" : "Was würde dir helfen?"}
                   style={{
@@ -185,6 +278,7 @@ export function FeedbackWidget({
                 <label style={{ display: "block", marginTop: 10 }}>
                   <span style={{ fontSize: 12, color: "#9aa0aa" }}>Anhänge (optional, z. B. Screenshot)</span>
                   <input
+                    ref={fileInputRef}
                     type="file"
                     name="files"
                     multiple
@@ -198,6 +292,23 @@ export function FeedbackWidget({
                     </span>
                   )}
                 </label>
+                {allowScreenshot && (
+                  <button
+                    type="button"
+                    disabled={capturing}
+                    onClick={screenshotErfassen}
+                    style={{
+                      display: "block", marginTop: 8, padding: "6px 12px", borderRadius: 8,
+                      border: "1px solid #2e333d", background: "transparent", color: "#9aa0aa",
+                      cursor: capturing ? "wait" : "pointer", fontSize: 12,
+                    }}
+                  >
+                    {capturing ? "Erfasse Bildschirm …" : "📷 Screenshot hinzufügen"}
+                  </button>
+                )}
+                {error && (
+                  <div style={{ fontSize: 12, color: "#e06a5e", marginTop: 10 }}>{error}</div>
+                )}
                 {platformOptionLabel && (
                   <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 13, color: "#9aa0aa", cursor: "pointer" }}>
                     <input
@@ -210,7 +321,7 @@ export function FeedbackWidget({
                   </label>
                 )}
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
-                  <button type="button" onClick={() => setOpen(false)} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #2e333d", background: "transparent", color: "#9aa0aa", cursor: "pointer" }}>
+                  <button type="button" onClick={schliessen} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #2e333d", background: "transparent", color: "#9aa0aa", cursor: "pointer" }}>
                     Abbrechen
                   </button>
                   <button type="submit" style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: brandColor, color: "#fff", fontWeight: 600, cursor: "pointer" }}>

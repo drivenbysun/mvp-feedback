@@ -9,7 +9,7 @@ gelegt. Alles Projektspezifische kommt als **Config** rein — kein hartkodierte
 
 `package.json` (via git-Dependency, keine Registry nötig):
 ```json
-"dependencies": { "mvp-feedback": "github:ss-cowork-engineer/mvp-feedback" }
+"dependencies": { "mvp-feedback": "github:drivenbysun/mvp-feedback" }
 ```
 `next.config.ts`:
 ```ts
@@ -93,6 +93,52 @@ const seite = sanitizePagePath(window.location.href);
 import { sanitizePagePath } from "mvp-feedback/server";
 const seite = sanitizePagePath(eingehenderWert);
 ```
+
+## Mindestlänge & Rate-Limit (serverseitig)
+Aus dem Vergleich der drei ursprünglichen Implementierungen (agency-os, magenta-os,
+StaffHub) übernommen, statt dass jede App das für sich neu baut:
+
+```ts
+await submitFeedback(
+  {
+    repo: "drivenbysun/agency-os",
+    appLabel: "app:agency-os",
+    minLength: 15,                              // Default: 10 Zeichen
+    rateLimit: { max: 3, windowMs: 60_000 },     // Default: kein Limit
+  },
+  { kind: "bug", text, rateLimitKey: ip },       // ohne rateLimitKey: fällt auf submitter.email zurück
+);
+```
+
+Beides ist **serverseitig erzwungen** — ein `required`-Textfeld im Client reicht nicht
+(ein Leerzeichen erfüllt das schon). Rate-Limit ist **In-Memory**, gilt also pro
+Serverless-Prozess, kein verteilter Zähler — bewusste Grenze für einen einfachen
+Spam-Schutz, keine Redis-Abhängigkeit im Paket. Ohne `rateLimitKey` **und** ohne
+`submitter.email` greift kein Limit (kein gemeinsamer Topf für alle anonymen
+Absender, der sich sonst gegenseitig sperren würde).
+
+Damit ein abgelehnter Versuch nicht trotzdem als „Danke, eingegangen" erscheint,
+darf die Server-Action jetzt optional das `IntakeResult` zurückgeben — das Widget
+zeigt bei `ok: false` einen Fehlertext statt der Erfolgsmeldung:
+```ts
+"use server";
+export async function sendFeedback(fd: FormData) {
+  return submitFeedback(config, input); // Rückgabe jetzt durchreichen, statt zu verwerfen
+}
+```
+Rein `void` zurückgebende Actions (bestehende Einbindungen) funktionieren unverändert
+weiter — sie zeigen bei einer Ablehnung nur weiterhin unverändert "Danke" (wie bisher).
+
+## Screenshot + Markierung (`allowScreenshot`)
+Aus StaffHubs eigenem Feedback-Modul übernommen (dort das einzige der drei mit dieser
+Funktion). Erfasst die Seite per `html2canvas` und erlaubt eine Freihand-Markierung
+(ein Stift, keine Formen/Text — Zweck ist "worum es geht zeigen", kein Bildeditor)
+direkt im Widget, bevor sie als Anhang mitgeschickt wird:
+```tsx
+<FeedbackWidget action={sendFeedback} allowScreenshot />
+```
+`html2canvas` wird nur bei tatsächlicher Nutzung per `import()` nachgeladen — Apps,
+die das Feature nicht einschalten, bekommen kein zusätzliches Bundle-Gewicht.
 
 ## Runtime-Voraussetzung
 `GH_PROJECT_TOKEN` (oder `config.tokenEnv`) = GitHub-Token mit `repo` (+ `project` fürs Board;

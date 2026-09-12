@@ -1,4 +1,5 @@
 import type { CreateBoardIssueInput, FeedbackConfig, IntakeAttachment, IntakeInput, IntakeResult, IntakeTarget } from "./config";
+import { pruefeRateLimit } from "./rate-limit";
 
 const DEFAULT_ATTACHMENT_TAG = "feedback-attachments";
 
@@ -230,7 +231,28 @@ export async function createBoardIssue(input: CreateBoardIssueInput): Promise<In
 export async function submitFeedback(config: FeedbackConfig, input: IntakeInput): Promise<IntakeResult> {
   const token = config.token ?? process.env[config.tokenEnv ?? "GH_PROJECT_TOKEN"];
   if (!token) return { ok: false, error: "no token configured" };
-  if (!input.text?.trim()) return { ok: false, error: "empty text" };
+
+  // Serverseitig erzwungen -- ein `required`-Feld im Client allein reicht
+  // nicht, ein Leerzeichen erfuellt das schon (agency-os' Luecke).
+  const minLength = config.minLength ?? 10;
+  const text = input.text?.trim() ?? "";
+  if (text.length < minLength) {
+    return { ok: false, error: `text too short (min ${minLength} chars)` };
+  }
+
+  // Rate-Limit VOR jedem GitHub-Aufruf, nicht danach -- sonst schuetzt es nur
+  // das Issue-Anlegen, nicht die teureren Anhang-Uploads davor.
+  if (config.rateLimit) {
+    const schluessel = input.rateLimitKey ?? input.submitter?.email ?? null;
+    if (schluessel) {
+      const ok = pruefeRateLimit(
+        `${config.repo}:${schluessel}`,
+        config.rateLimit.max,
+        config.rateLimit.windowMs,
+      );
+      if (!ok) return { ok: false, error: "rate limited" };
+    }
+  }
 
   // Ziel nach Scope wählen: "platform" → Paket-Repo (falls konfiguriert),
   // sonst die App. So landen FRs übers Feedback-Tool automatisch upstream.

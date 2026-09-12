@@ -46,6 +46,21 @@ export interface FeedbackConfig extends IntakeTarget {
    * Token-Auflösung (z. B. Magenta OS: GH_PAT_SERVER→GH_PROJECT_TOKEN→GH_TOKEN).
    */
   token?: string;
+  /**
+   * Mindestlänge des Freitexts in Zeichen, serverseitig erzwungen (Default: 10).
+   * Ein `required`-Feld im Client reicht nicht — ein Leerzeichen erfüllt das
+   * schon (Lücke, die agency-os' eigene Einbindung hatte, andere Consumer
+   * hatten das nur clientseitig oder gar nicht durchgesetzt).
+   */
+  minLength?: number;
+  /**
+   * Rate-Limit pro Absender (In-Memory, siehe rate-limit.ts). Ohne Angabe:
+   * kein Limit. In-Memory gilt NUR pro Serverless-Instanz/Prozess — kein
+   * verteilter Zähler. Das ist eine bewusste Grenze, keine Nachlässigkeit:
+   * dieselbe Grenze hatte Magenta OS' eigene Umsetzung schon, und ein
+   * einfacher Spam-Schutz braucht keine Redis-Abhängigkeit im Paket.
+   */
+  rateLimit?: { max: number; windowMs: number };
 }
 
 /** Eingaben für die Low-Level-Primitive createBoardIssue (Issue + Board + Spalte). */
@@ -70,6 +85,13 @@ export interface IntakeInput {
   title?: string;
   /** Wer meldet (für Transparenz im Issue-Body). */
   submitter?: { name?: string | null; email?: string | null } | null;
+  /**
+   * Schlüssel fürs Rate-Limit (siehe FeedbackConfig.rateLimit), z. B. die IP
+   * des Anfragenden. Ohne Angabe fällt submitFeedback auf `submitter.email`
+   * zurück; ist auch das leer, greift KEIN Limit (lieber kein Schutz als ein
+   * gemeinsamer Topf für alle anonymen Absender, der sich gegenseitig sperrt).
+   */
+  rateLimitKey?: string;
   /** Optionale Datei-Anhänge; werden als GitHub-Release-Assets ans Issue gehängt. */
   attachments?: IntakeAttachment[];
   /**
