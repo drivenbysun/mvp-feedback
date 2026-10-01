@@ -217,11 +217,11 @@ export async function ausfuehren(gql, plan, konfig = KONFIG, { jetzt = Date.now,
 }
 
 // ── Alarm + Zustand ──────────────────────────────────────────────────────────
-export function alarm(schwere, titel, text) {
+export function alarm(schwere, titel, text, schluessel = AUSLASTUNGS_SCHUTZ) {
   return new Promise((resolve) => {
     execFile(
       join(homedir(), ".fabrik/bin/fabrik-alarm"),
-      ["board-einsortierer", schwere, AUSLASTUNGS_SCHUTZ, titel, text.slice(0, 500)],
+      ["board-einsortierer", schwere, schluessel, titel, text.slice(0, 500)],
       { timeout: 30000 },
       (err) => resolve(err ? err.code ?? 1 : 0),
     );

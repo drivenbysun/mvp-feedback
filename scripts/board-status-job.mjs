@@ -1,0 +1,283 @@
+#!/usr/bin/env node
+// Board-Status-Job fuer magenta-os (Schnittstelle: magenta-os #1976, Teil b).
+// Laeuft auf dem Mac mini mit dem gh-Login des Servers; die Stages brauchen
+// dadurch keinen GitHub-Token mehr, nur einen eigenen BOARD_STATUS_KEY je Stage.
+//
+//   node scripts/board-status-job.mjs --stages dev,test    (ohne --stages: nichts live)
+//   --nur-lesen / --nur-schreiben                           einen Teil auslassen
+//   --trocken                                               Board lesen, NICHTS senden/verschieben
+//
+// Lesen:     alle app:magenta-os-Issues von Board 1 -> PUT {stage}/api/board-status
+// Schreiben: GET {stage}/api/board-moves -> Karte verschieben -> POST .../result
+// Schluessel: ~/.fabrik/keys/board-status-key-<stage>.txt (600). Nie loggen, nie im Alarmtext.
+
+import { readFileSync, mkdirSync, writeFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { ghGraphql, alarm as alarmSenden } from "./board-einsortierer.mjs";
+
+export const KONFIG = {
+  eigentuemer: "ss-cowork-engineer",
+  boardNummer: 1,
+  label: "app:magenta-os",
+  stages: {
+    dev: "https://magenta-os-dev.mhub.one",
+    test: "https://magenta-os-test.mhub.one",
+    prod: "https://magenta-os.mhub.one",
+  },
+  schluesselDatei: (stage) => join(homedir(), `.fabrik/keys/board-status-key-${stage}.txt`),
+  maxItems: 2000,
+  maxItemSeiten: 30,
+  maxMovesProStage: 50,
+  httpSekunden: 20,
+  gesamtSekunden: 200,
+  // Nur diese Spalten-Spruenge sind erlaubt: Ziel -> erforderlicher Ausgangsstatus.
+  erlaubteSpruenge: { "Review (TEST)": "Review (DEV)", "Done (PROD)": "Review (TEST)" },
+};
+
+const Q_BOARD = `query($o:String!,$n:Int!,$c:String){ user(login:$o){ projectV2(number:$n){ id
+  field(name:"Status"){ ... on ProjectV2SingleSelectField { id options{ id name } } }
+  items(first:100, after:$c){ pageInfo{ hasNextPage endCursor } nodes{ id
+    content{ ... on Issue{ number title url state updatedAt labels(first:30){ nodes{ name color } } } }
+    status: fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue{ name } } } } } } }`;
+const M_SET = `mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){ updateProjectV2ItemFieldValue(input:{projectId:$p,itemId:$i,fieldId:$f,value:{singleSelectOptionId:$o}}){ projectV2Item{ id } } }`;
+
+// ── Board lesen ──────────────────────────────────────────────────────────────
+export async function boardLesen(gql, konfig = KONFIG) {
+  let projekt = null;
+  const knoten = [];
+  let cursor = null;
+  for (let i = 0; i < konfig.maxItemSeiten; i++) {
+    const d = await gql(Q_BOARD, { o: konfig.eigentuemer, n: konfig.boardNummer, c: cursor });
+    const p = d?.user?.projectV2;
+    if (!p?.id) throw new Error(`Board ${konfig.boardNummer} nicht lesbar`);
+    projekt ??= p;
+    knoten.push(...(p.items?.nodes ?? []));
+    if (!p.items?.pageInfo?.hasNextPage) {
+      const items = [];
+      for (const k of knoten) {
+        const c = k.content;
+        const labels = (c?.labels?.nodes ?? []).map((l) => ({ name: l.name, color: l.color }));
+        if (!c?.number || !labels.some((l) => l.name === konfig.label)) continue;
+        items.push({
+          itemId: k.id, number: c.number, title: c.title, url: c.url, status: k.status?.name ?? null,
+          labels, updatedAt: c.updatedAt ?? "",
+        });
+      }
+      return {
+        projectId: projekt.id,
+        statusFeldId: projekt.field?.id ?? null,
+        optionen: Object.fromEntries((projekt.field?.options ?? []).map((o) => [o.name, o.id])),
+        items,
+      };
+    }
+    cursor = p.items.pageInfo.endCursor;
+  }
+  throw new Error(`Board hat mehr als ${konfig.maxItemSeiten} Seiten -- nichts geraten`);
+}
+
+// Obergrenze der App: 2000 Items. Erledigtes faellt zuerst raus, dann das Aelteste.
+export function fuerStage(items, konfig = KONFIG) {
+  const roh = items.map(({ number, title, status, url, labels }) => ({ number, title, status, url, labels }));
+  if (roh.length <= konfig.maxItems) return { items: roh, gekappt: 0 };
+  const rang = (it) => (it.status === "Done (PROD)" ? 0 : 1);
+  const sortiert = [...items].sort((a, b) => rang(b) - rang(a) || b.updatedAt.localeCompare(a.updatedAt));
+  const behalten = sortiert.slice(0, konfig.maxItems);
+  return {
+    items: behalten.map(({ number, title, status, url, labels }) => ({ number, title, status, url, labels })),
+    gekappt: items.length - behalten.length,
+  };
+}
+
+// ── HTTP gegen eine Stage ────────────────────────────────────────────────────
+export async function stageAufruf(fetchFn, basis, pfad, methode, schluessel, body, konfig = KONFIG) {
+  const res = await fetchFn(basis + pfad, {
+    method: methode,
+    headers: { Authorization: `Bearer ${schluessel}`, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(konfig.httpSekunden * 1000),
+  });
+  let json = null;
+  try {
+    json = await res.json();
+  } catch {
+    /* Antwort ohne JSON */
+  }
+  return { status: res.status, json };
+}
+
+// ── Lesen: Stand an eine Stage schieben ──────────────────────────────────────
+export async function standSenden(fetchFn, stage, basis, schluessel, board, konfig = KONFIG) {
+  const { items, gekappt } = fuerStage(board.items, konfig);
+  const r = await stageAufruf(fetchFn, basis, "/api/board-status", "PUT", schluessel, { generatedAt: new Date().toISOString(), items }, konfig);
+  // 409: die Stage hat einen neueren Stand -- kein Fehler, nichts zurueckdrehen.
+  if (r.status === 200 || r.status === 409) return { ok: true, status: r.status, anzahl: items.length, gekappt };
+  const hinweis = { 401: "Schluessel falsch", 503: "Schluessel auf der Stage nicht gesetzt", 404: "Endpunkt fehlt", 400: "Schema abgelehnt" }[r.status] ?? "unerwartet";
+  return { ok: false, status: r.status, fehler: `${stage}: PUT /api/board-status -> ${r.status} (${hinweis})` };
+}
+
+// ── Schreiben: Auftraege abarbeiten ──────────────────────────────────────────
+export async function moveAusfuehren(gql, board, move, konfig = KONFIG) {
+  const nummer = Number(move.issueNumber);
+  const ziel = move.toStatus;
+  const erlaubterStart = move.fromStatus ?? konfig.erlaubteSpruenge[ziel];
+  if (!board.optionen[ziel] || !(ziel in konfig.erlaubteSpruenge)) return { ok: false, error: `unbekannte Spalte: ${String(ziel).slice(0, 60)}` };
+  const item = board.items.find((i) => i.number === nummer);
+  if (!item) return { ok: false, error: `Karte #${nummer} nicht auf Board 1 mit ${konfig.label}` };
+  if (item.status === ziel) return { ok: true, schonDa: true }; // idempotent
+  if (item.status !== erlaubterStart) return { ok: false, error: "status changed" };
+  await gql(M_SET, { p: board.projectId, i: item.itemId, f: board.statusFeldId, o: board.optionen[ziel] });
+  item.status = ziel;
+  return { ok: true };
+}
+
+export async function schreibenFuerStage(fetchFn, gql, stage, basis, schluessel, board, konfig = KONFIG) {
+  const g = await stageAufruf(fetchFn, basis, "/api/board-moves", "GET", schluessel, undefined, konfig);
+  if (g.status !== 200) return { ok: false, fehler: `${stage}: GET /api/board-moves -> ${g.status}`, bearbeitet: 0 };
+  const liste = Array.isArray(g.json) ? g.json : (g.json?.moves ?? g.json?.items ?? []);
+  let bearbeitet = 0;
+  const fehler = [];
+  const abgelehnt = [];
+  for (const move of liste.slice(0, konfig.maxMovesProStage)) {
+    let ergebnis;
+    try {
+      ergebnis = await moveAusfuehren(gql, board, move, konfig);
+    } catch (e) {
+      // GitHub-Fehler: Auftrag bleibt offen (pending) und wird im naechsten Lauf erneut versucht.
+      fehler.push(`${stage}: Auftrag ${move.id} (#${move.issueNumber}): ${String(e.message ?? e).slice(0, 120)}`);
+      continue;
+    }
+    // Eine Ablehnung ist ein fachliches Ergebnis (geht an die App zurueck), kein Jobfehler -> kein Alarm.
+    if (!ergebnis.ok) abgelehnt.push(`${move.id} (#${move.issueNumber}): ${ergebnis.error}`);
+    const body = ergebnis.ok ? { ok: true } : { ok: false, error: ergebnis.error };
+    const p = await stageAufruf(fetchFn, basis, `/api/board-moves/${encodeURIComponent(move.id)}/result`, "POST", schluessel, body, konfig);
+    if (p.status !== 200) fehler.push(`${stage}: Ergebnis fuer ${move.id} nicht angenommen (${p.status})`);
+    bearbeitet++;
+  }
+  return { ok: fehler.length === 0, fehler: fehler.join(" | "), bearbeitet, abgelehnt };
+}
+
+// ── Zustand + Alarm je Stage ─────────────────────────────────────────────────
+const ZUSTAND = join(homedir(), ".fabrik/zustand/board-status-job.json");
+export const zustandDatei = {
+  lesen() {
+    try {
+      return JSON.parse(readFileSync(ZUSTAND, "utf8"));
+    } catch {
+      return {};
+    }
+  },
+  schreiben(z) {
+    mkdirSync(dirname(ZUSTAND), { recursive: true });
+    writeFileSync(ZUSTAND, JSON.stringify(z));
+  },
+};
+
+export function schluesselLesen(stage, konfig = KONFIG) {
+  const datei = konfig.schluesselDatei(stage);
+  const st = statSync(datei);
+  if (st.mode & 0o077) throw new Error(`Schluesseldatei ${stage} ist fuer andere lesbar (Rechte muessen 600 sein)`);
+  const wert = readFileSync(datei, "utf8").trim();
+  if (!wert) throw new Error(`Schluesseldatei ${stage} ist leer`);
+  return wert;
+}
+
+// ── Lauf ─────────────────────────────────────────────────────────────────────
+export async function lauf(opt, deps = {}) {
+  const {
+    gql = ghGraphql, fetchFn = fetch, konfig = KONFIG, alarmFn = alarmSenden, zustand = zustandDatei,
+    schluessel = (s) => schluesselLesen(s, konfig), log = console.log,
+  } = deps;
+  const stages = opt.stages ?? [];
+  if (!stages.length) {
+    log("Keine Stage gewaehlt (--stages dev,test,prod): nichts zu tun.");
+    return { exit: 0, ergebnisse: {} };
+  }
+  const unbekannt = stages.filter((s) => !konfig.stages[s]);
+  if (unbekannt.length) throw new Error(`unbekannte Stage: ${unbekannt.join(",")}`);
+
+  const ergebnisse = {};
+  let board = null;
+  let boardFehler = null;
+  try {
+    board = await boardLesen(gql, konfig);
+    log(`Board 1: ${board.items.length} Karten mit ${konfig.label}`);
+  } catch (e) {
+    boardFehler = `Board lesen: ${String(e.message ?? e).slice(0, 200)}`;
+  }
+
+  const start = Date.now();
+  for (const stage of stages) {
+    let fehler = boardFehler;
+    if (!fehler) {
+      if (Date.now() - start > konfig.gesamtSekunden * 1000) fehler = `${stage}: Laufzeit-Obergrenze, Stage uebersprungen`;
+      else if (opt.trocken) {
+        log(`${stage}: Trockenlauf, ${fuerStage(board.items, konfig).items.length} Karten wuerden gesendet`);
+        ergebnisse[stage] = { trocken: true };
+        continue;
+      } else {
+        try {
+          const key = schluessel(stage);
+          const basis = konfig.stages[stage];
+          const teile = [];
+          if (!opt.nurSchreiben) {
+            const r = await standSenden(fetchFn, stage, basis, key, board, konfig);
+            ergebnisse[stage] = { ...ergebnisse[stage], lesen: r };
+            if (!r.ok) teile.push(r.fehler);
+            else log(`${stage}: ${r.anzahl} Karten gesendet (${r.status})${r.gekappt ? `, ${r.gekappt} wegen Obergrenze weggelassen` : ""}`);
+          }
+          if (!opt.nurLesen) {
+            const r = await schreibenFuerStage(fetchFn, gql, stage, basis, key, board, konfig);
+            ergebnisse[stage] = { ...ergebnisse[stage], schreiben: r };
+            if (!r.ok) teile.push(r.fehler);
+            if (r.bearbeitet) log(`${stage}: ${r.bearbeitet} Verschiebe-Auftraege bearbeitet, ${r.abgelehnt.length} abgelehnt${r.abgelehnt.length ? `: ${r.abgelehnt.join(" | ")}` : ""}`);
+          }
+          fehler = teile.length ? teile.join(" | ") : null;
+        } catch (e) {
+          fehler = `${stage}: ${String(e.message ?? e).slice(0, 200)}`;
+        }
+      }
+    }
+    // Alarm nur beim Zustandswechsel, je Stage.
+    const z = zustand.lesen();
+    const vorher = z[stage] ?? "ok";
+    const jetzt = fehler ? "rot" : "ok";
+    if (jetzt !== vorher) {
+      if (jetzt === "rot") await alarmFn("rot", `Board-Status-Job ${stage}: Fehler`, fehler, `board-status-job-${stage}`);
+      else await alarmFn("gruen", `Board-Status-Job ${stage}: wieder ok`, "Letzter Lauf ohne Fehler.", `board-status-job-${stage}`);
+      zustand.schreiben({ ...z, [stage]: jetzt });
+    }
+    if (fehler) {
+      console.error(`FEHLER ${fehler}`);
+      ergebnisse[stage] = { ...ergebnisse[stage], fehler };
+    }
+  }
+  const exit = Object.values(ergebnisse).some((e) => e.fehler) ? 1 : 0;
+  return { exit, ergebnisse };
+}
+
+// ── CLI ──────────────────────────────────────────────────────────────────────
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  const argv = process.argv.slice(2);
+  const i = argv.indexOf("--stages");
+  const opt = {
+    stages: i >= 0 ? (argv[i + 1] ?? "").split(",").filter(Boolean) : [],
+    nurLesen: argv.includes("--nur-lesen"),
+    nurSchreiben: argv.includes("--nur-schreiben"),
+    trocken: argv.includes("--trocken"),
+  };
+  const wachhund = setTimeout(() => {
+    console.error("FEHLER: Laufzeit-Obergrenze, Prozess wird beendet");
+    process.exit(2);
+  }, (KONFIG.gesamtSekunden + 60) * 1000);
+  lauf(opt)
+    .then((r) => {
+      clearTimeout(wachhund);
+      process.exit(r.exit);
+    })
+    .catch((e) => {
+      console.error(String(e.message ?? e));
+      process.exit(1);
+    });
+}
