@@ -5,10 +5,10 @@ import { KONFIG, boardLesen, fuerStage, lauf, moveAusfuehren } from "./board-sta
 // sobald DEV die Endpunkte hat, muss ein Lauf gegen DEV diese Annahmen bestaetigen.
 
 const LABEL = [{ name: "app:magenta-os", color: "00ff00" }];
-function knoten(id, nr, status, { labels = LABEL, state = "OPEN" } = {}) {
+function knoten(id, nr, status, { labels = LABEL, state = "OPEN", repo = "ss-cowork-engineer/magenta-os" } = {}) {
   return {
     id,
-    content: { number: nr, title: `Karte ${nr}`, url: `https://github.com/x/y/issues/${nr}`, state, updatedAt: `2026-10-0${(nr % 9) + 1}T00:00:00Z`, labels: { nodes: labels } },
+    content: { number: nr, title: `Karte ${nr}`, url: `https://github.com/x/y/issues/${nr}`, state, repository: { nameWithOwner: repo }, updatedAt: `2026-10-0${(nr % 9) + 1}T00:00:00Z`, labels: { nodes: labels } },
     status: status ? { name: status } : null,
   };
 }
@@ -51,6 +51,11 @@ function umgebung(extra = {}) {
 }
 
 describe("boardLesen / fuerStage", () => {
+  it("nimmt nur Karten aus magenta-os mit app:magenta-os, nicht andere Repos", async () => {
+    const { gql } = boardAttrappe([knoten("a", 1, "Todo"), knoten("x", 2, "Todo", { repo: "drivenbysun/agency-os" })]);
+    expect((await boardLesen(gql)).items.map((i) => i.number)).toEqual([1]);
+  });
+
   it("nimmt nur Karten mit app:magenta-os und liest ueber mehrere Seiten", async () => {
     const items = [
       knoten("a", 1, "Todo"),
@@ -92,49 +97,66 @@ describe("moveAusfuehren", () => {
     ],
   });
 
-  it("DEV -> Review (TEST) und TEST -> Done (PROD)", async () => {
+  it("dev: nur Review (DEV) -> Review (TEST); test: nur Review (TEST) -> Done (PROD)", async () => {
     const { gql, schreib } = boardAttrappe([]);
     const b = board();
-    expect(await moveAusfuehren(gql, b, { id: "1", issueNumber: 10, toStatus: "Review (TEST)" })).toEqual({ ok: true });
-    expect(await moveAusfuehren(gql, b, { id: "2", issueNumber: 11, toStatus: "Done (PROD)" })).toEqual({ ok: true });
+    expect(await moveAusfuehren(gql, b, { id: "1", issueNumber: 10, toStatus: "Review (TEST)" }, "dev")).toEqual({ ok: true });
+    expect(await moveAusfuehren(gql, b, { id: "2", issueNumber: 11, toStatus: "Done (PROD)" }, "test")).toEqual({ ok: true });
     expect(schreib).toEqual([{ item: "iA", option: "opt-Review (TEST)" }, { item: "iB", option: "opt-Done (PROD)" }]);
+  });
+
+  it("kreuzweise und prod: abgelehnt, nichts bewegt", async () => {
+    const { gql, schreib } = boardAttrappe([]);
+    const b = board();
+    const faelle = [
+      ["dev", { id: "1", issueNumber: 11, toStatus: "Done (PROD)" }],
+      ["test", { id: "2", issueNumber: 10, toStatus: "Review (TEST)" }],
+      ["prod", { id: "3", issueNumber: 11, toStatus: "Done (PROD)" }],
+      ["prod", { id: "4", issueNumber: 10, toStatus: "Review (TEST)" }],
+      ["staging", { id: "5", issueNumber: 10, toStatus: "Review (TEST)" }],
+      ["dev", { id: "6", issueNumber: 10, toStatus: "__proto__" }],
+      ["dev", { id: "7", issueNumber: "10; DROP", toStatus: "Review (TEST)" }],
+    ];
+    for (const [stage, move] of faelle) expect((await moveAusfuehren(gql, b, move, stage)).ok).toBe(false);
+    expect(schreib).toEqual([]);
   });
 
   it("ist idempotent: steht die Karte schon im Ziel, ok ohne zweite Verschiebung", async () => {
     const { gql, schreib } = boardAttrappe([]);
     const b = board();
-    await moveAusfuehren(gql, b, { id: "1", issueNumber: 10, toStatus: "Review (TEST)" });
-    const zweit = await moveAusfuehren(gql, b, { id: "1", issueNumber: 10, toStatus: "Review (TEST)" });
+    await moveAusfuehren(gql, b, { id: "1", issueNumber: 10, toStatus: "Review (TEST)" }, "dev");
+    const zweit = await moveAusfuehren(gql, b, { id: "1", issueNumber: 10, toStatus: "Review (TEST)" }, "dev");
     expect(zweit).toEqual({ ok: true, schonDa: true });
     expect(schreib.length).toBe(1);
   });
 
   it("verschiebt nicht, wenn die Karte nicht mehr im Ausgangsstatus steht", async () => {
     const { gql, schreib } = boardAttrappe([]);
-    const r = await moveAusfuehren(gql, board(), { id: "1", issueNumber: 12, toStatus: "Review (TEST)" });
+    const r = await moveAusfuehren(gql, board(), { id: "1", issueNumber: 12, toStatus: "Review (TEST)" }, "dev");
     expect(r).toEqual({ ok: false, error: "status changed" });
     expect(schreib).toEqual([]);
   });
 
-  it("nutzt fromStatus aus dem Auftrag, falls MAGENTA es mitliefert", async () => {
-    const { gql } = boardAttrappe([]);
-    const r = await moveAusfuehren(gql, board(), { id: "1", issueNumber: 13, toStatus: "Done (PROD)", fromStatus: "Review (DEV)" });
+  it("ein fromStatus der App, das von der Erlaubnisliste abweicht, macht den Auftrag ungueltig", async () => {
+    const { gql, schreib } = boardAttrappe([]);
+    const r = await moveAusfuehren(gql, board(), { id: "1", issueNumber: 13, toStatus: "Done (PROD)", fromStatus: "Review (DEV)" }, "test");
+    expect(schreib).toEqual([]);
     expect(r).toEqual({ ok: false, error: "status changed" });
   });
 
   it("unbekannte oder nicht erlaubte Spalte geht als Fehler zurueck, kein stilles Skip", async () => {
     const { gql, schreib } = boardAttrappe([]);
     for (const ziel of ["Gibt es nicht", "Todo", "Someday"]) {
-      const r = await moveAusfuehren(gql, board(), { id: "1", issueNumber: 10, toStatus: ziel });
+      const r = await moveAusfuehren(gql, board(), { id: "1", issueNumber: 10, toStatus: ziel }, "dev");
       expect(r.ok).toBe(false);
-      expect(r.error).toMatch(/unbekannte Spalte/);
+      expect(r.error).toMatch(/nicht erlaubt/);
     }
     expect(schreib).toEqual([]);
   });
 
   it("Karte ausserhalb Board 1 / ohne Label -> Fehler", async () => {
     const { gql } = boardAttrappe([]);
-    const r = await moveAusfuehren(gql, board(), { id: "1", issueNumber: 999, toStatus: "Review (TEST)" });
+    const r = await moveAusfuehren(gql, board(), { id: "1", issueNumber: 999, toStatus: "Review (TEST)" }, "dev");
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/nicht auf Board 1/);
   });
@@ -187,7 +209,7 @@ describe("lauf", () => {
     expect(schreib.length).toBe(1);
     const results = aufrufe.filter((a) => a.url.endsWith("/result"));
     expect(results.map((x) => [x.url.split("/").slice(-2)[0], x.body.ok])).toEqual([["m1", true], ["m2", false]]);
-    expect(results[1].body.error).toMatch(/unbekannte Spalte/);
+    expect(results[1].body.error).toMatch(/nicht erlaubt/);
     // Ablehnung = fachliches Ergebnis, geht an die App zurueck, kein Jobfehler, kein Alarm
     expect(r.exit).toBe(0);
     expect(r.ergebnisse.dev.schreiben.abgelehnt.length).toBe(1);
@@ -220,6 +242,21 @@ describe("lauf", () => {
     expect(r.exit).toBe(0);
     expect(env.alarmFn).toHaveBeenCalledTimes(2);
     expect(env.alarmFn.mock.calls[1][0]).toBe("gruen");
+  });
+
+  it("Weiterleitungen werden nie gefolgt und jede Stage hat ihren eigenen Host (Schluessel bleibt bei seiner Stage)", async () => {
+    const { gql } = boardAttrappe(items);
+    const optionen = [];
+    const fetchFn = vi.fn(async (url, init) => {
+      optionen.push(init.redirect);
+      return { status: 200, json: async () => [] };
+    });
+    await lauf({ stages: ["dev", "test", "prod"] }, { ...umgebung(), gql, fetchFn });
+    expect(optionen.length).toBeGreaterThan(0);
+    expect(optionen.every((o) => o === "error")).toBe(true);
+    const hosts = Object.values(KONFIG.stages).map((u) => new URL(u).host);
+    expect(new Set(hosts).size).toBe(3);
+    expect(Object.values(KONFIG.stages).every((u) => u.startsWith("https://"))).toBe(true);
   });
 
   it("409 (Stage hat neueren Stand) ist kein Fehler", async () => {

@@ -21,6 +21,7 @@ export const KONFIG = {
   eigentuemer: "ss-cowork-engineer",
   boardNummer: 1,
   label: "app:magenta-os",
+  repo: "ss-cowork-engineer/magenta-os",
   stages: {
     dev: "https://magenta-os-dev.mhub.one",
     test: "https://magenta-os-test.mhub.one",
@@ -32,14 +33,19 @@ export const KONFIG = {
   maxMovesProStage: 50,
   httpSekunden: 20,
   gesamtSekunden: 200,
-  // Nur diese Spalten-Spruenge sind erlaubt: Ziel -> erforderlicher Ausgangsstatus.
-  erlaubteSpruenge: { "Review (TEST)": "Review (DEV)", "Done (PROD)": "Review (TEST)" },
+  // Je Stage genau ein Uebergang (Ziel -> erforderlicher Ausgangsstatus); prod: keiner.
+  // Die Auftraege stammen aus der Datenbank der App und gelten fuer den Job als nicht vertrauenswuerdig.
+  erlaubteSpruenge: {
+    dev: { "Review (TEST)": "Review (DEV)" },
+    test: { "Done (PROD)": "Review (TEST)" },
+    prod: {},
+  },
 };
 
 const Q_BOARD = `query($o:String!,$n:Int!,$c:String){ user(login:$o){ projectV2(number:$n){ id
   field(name:"Status"){ ... on ProjectV2SingleSelectField { id options{ id name } } }
   items(first:100, after:$c){ pageInfo{ hasNextPage endCursor } nodes{ id
-    content{ ... on Issue{ number title url state updatedAt labels(first:30){ nodes{ name color } } } }
+    content{ ... on Issue{ number title url state updatedAt repository{ nameWithOwner } labels(first:30){ nodes{ name color } } } }
     status: fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue{ name } } } } } } }`;
 const M_SET = `mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){ updateProjectV2ItemFieldValue(input:{projectId:$p,itemId:$i,fieldId:$f,value:{singleSelectOptionId:$o}}){ projectV2Item{ id } } }`;
 
@@ -59,7 +65,7 @@ export async function boardLesen(gql, konfig = KONFIG) {
       for (const k of knoten) {
         const c = k.content;
         const labels = (c?.labels?.nodes ?? []).map((l) => ({ name: l.name, color: l.color }));
-        if (!c?.number || !labels.some((l) => l.name === konfig.label)) continue;
+        if (!c?.number || c.repository?.nameWithOwner !== konfig.repo || !labels.some((l) => l.name === konfig.label)) continue;
         items.push({
           itemId: k.id, number: c.number, title: c.title, url: c.url, status: k.status?.name ?? null,
           labels, updatedAt: c.updatedAt ?? "",
@@ -97,6 +103,8 @@ export async function stageAufruf(fetchFn, basis, pfad, methode, schluessel, bod
     headers: { Authorization: `Bearer ${schluessel}`, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(konfig.httpSekunden * 1000),
+    // Nie Weiterleitungen folgen: der Bearer-Schluessel darf nur an die Basis-URL genau dieser Stage gehen.
+    redirect: "error",
   });
   let json = null;
   try {
@@ -118,13 +126,17 @@ export async function standSenden(fetchFn, stage, basis, schluessel, board, konf
 }
 
 // ── Schreiben: Auftraege abarbeiten ──────────────────────────────────────────
-export async function moveAusfuehren(gql, board, move, konfig = KONFIG) {
+export async function moveAusfuehren(gql, board, move, stage, konfig = KONFIG) {
   const nummer = Number(move.issueNumber);
   const ziel = move.toStatus;
-  const erlaubterStart = move.fromStatus ?? konfig.erlaubteSpruenge[ziel];
-  if (!board.optionen[ziel] || !(ziel in konfig.erlaubteSpruenge)) return { ok: false, error: `unbekannte Spalte: ${String(ziel).slice(0, 60)}` };
+  const erlaubt = konfig.erlaubteSpruenge[stage] ?? {};
+  if (!Number.isInteger(nummer) || nummer <= 0) return { ok: false, error: "ungueltige Issue-Nummer" };
+  if (!Object.hasOwn(erlaubt, ziel) || !board.optionen[ziel]) return { ok: false, error: `Uebergang auf ${stage} nicht erlaubt: ${String(ziel).slice(0, 60)}` };
+  // Ausgangsstatus kommt aus der Erlaubnisliste; ein abweichendes fromStatus der App macht den Auftrag ungueltig.
+  const erlaubterStart = erlaubt[ziel];
+  if (move.fromStatus !== undefined && move.fromStatus !== erlaubterStart) return { ok: false, error: "status changed" };
   const item = board.items.find((i) => i.number === nummer);
-  if (!item) return { ok: false, error: `Karte #${nummer} nicht auf Board 1 mit ${konfig.label}` };
+  if (!item) return { ok: false, error: `Karte #${nummer} nicht auf Board 1 mit ${konfig.label} in ${konfig.repo}` };
   if (item.status === ziel) return { ok: true, schonDa: true }; // idempotent
   if (item.status !== erlaubterStart) return { ok: false, error: "status changed" };
   await gql(M_SET, { p: board.projectId, i: item.itemId, f: board.statusFeldId, o: board.optionen[ziel] });
@@ -142,7 +154,7 @@ export async function schreibenFuerStage(fetchFn, gql, stage, basis, schluessel,
   for (const move of liste.slice(0, konfig.maxMovesProStage)) {
     let ergebnis;
     try {
-      ergebnis = await moveAusfuehren(gql, board, move, konfig);
+      ergebnis = await moveAusfuehren(gql, board, move, stage, konfig);
     } catch (e) {
       // GitHub-Fehler: Auftrag bleibt offen (pending) und wird im naechsten Lauf erneut versucht.
       fehler.push(`${stage}: Auftrag ${move.id} (#${move.issueNumber}): ${String(e.message ?? e).slice(0, 120)}`);
