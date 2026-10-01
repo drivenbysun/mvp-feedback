@@ -8,7 +8,7 @@ const LABEL = [{ name: "app:magenta-os", color: "00ff00" }];
 function knoten(id, nr, status, { labels = LABEL, state = "OPEN", repo = "ss-cowork-engineer/magenta-os" } = {}) {
   return {
     id,
-    content: { number: nr, title: `Karte ${nr}`, url: `https://github.com/x/y/issues/${nr}`, state, repository: { nameWithOwner: repo }, updatedAt: `2026-10-0${(nr % 9) + 1}T00:00:00Z`, labels: { nodes: labels } },
+    content: { number: nr, title: `Karte ${nr}`, url: `https://github.com/${repo}/issues/${nr}`, state, repository: { nameWithOwner: repo }, updatedAt: `2026-10-0${(nr % 9) + 1}T00:00:00Z`, labels: { nodes: labels } },
     status: status ? { name: status } : null,
   };
 }
@@ -76,13 +76,36 @@ describe("boardLesen / fuerStage", () => {
   });
 
   it("kappt auf 2000: Erledigtes zuerst, Rest nach Aktualitaet", () => {
-    const mk = (n, status) => ({ itemId: `i${n}`, number: n, title: "t", url: "u", status, labels: [], updatedAt: `2026-01-01T00:00:${String(n % 60).padStart(2, "0")}Z` });
+    const mk = (n, status) => ({ itemId: `i${n}`, number: n, title: "t", url: `https://github.com/ss-cowork-engineer/magenta-os/issues/${n}`, status, labels: [], updatedAt: `2026-01-01T00:00:${String(n % 60).padStart(2, "0")}Z` });
     const items = [mk(1, "Done (PROD)"), mk(2, "Done (PROD)"), mk(3, "Todo"), mk(4, "Todo")];
     const r = fuerStage(items, { ...KONFIG, maxItems: 3 });
     expect(r.gekappt).toBe(1);
     expect(r.items.map((i) => i.number)).toContain(3);
     expect(r.items.map((i) => i.number)).toContain(4);
     expect(r.items.every((i) => !("itemId" in i))).toBe(true); // itemId entfaellt laut Spec
+  });
+});
+
+describe("fuerStage: Form der App", () => {
+  const gut = (n = 1) => ({ number: n, title: "t", url: `https://github.com/ss-cowork-engineer/magenta-os/issues/${n}`, status: "Todo", labels: [{ name: "app:magenta-os", color: "0e8a16" }], updatedAt: "" });
+
+  it("laesst Items ohne gueltige URL, Farbe oder Status aus und schickt den Rest", () => {
+    const items = [
+      gut(1),
+      { ...gut(2), url: "https://github.com/anderer/repo/issues/2" },
+      { ...gut(3), url: "https://github.com/ss-cowork-engineer/magenta-os/issues/3/../../x" },
+      { ...gut(4), labels: [{ name: "x", color: "f00" }] },
+      { ...gut(5), status: null },
+    ];
+    const r = fuerStage(items);
+    expect(r.items.map((i) => i.number)).toEqual([1]);
+    expect(r.verworfen).toBe(4);
+  });
+
+  it("kuerzt title auf 300 und label.name auf 100 Zeichen", () => {
+    const [i] = fuerStage([{ ...gut(1), title: "x".repeat(500), labels: [{ name: "y".repeat(200), color: "ffffff" }] }]).items;
+    expect(i.title).toHaveLength(300);
+    expect(i.labels[0].name).toHaveLength(100);
   });
 });
 

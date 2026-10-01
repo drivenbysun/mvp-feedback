@@ -83,17 +83,35 @@ export async function boardLesen(gql, konfig = KONFIG) {
   throw new Error(`Board hat mehr als ${konfig.maxItemSeiten} Seiten -- nichts geraten`);
 }
 
+// Form der App (400 sonst, ein schlechtes Item kippt den ganzen Push): Item bereinigen oder auslassen.
+const ISSUE_URL = (repo) => new RegExp(`^https://github\\.com/${repo.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}/issues/\\d+$`);
+export function itemFuerApp(it, konfig = KONFIG) {
+  if (!Number.isInteger(it.number) || it.number <= 0) return null;
+  if (typeof it.status !== "string" || !it.status) return null;
+  if (typeof it.url !== "string" || !ISSUE_URL(konfig.repo).test(it.url)) return null;
+  const labels = [];
+  for (const l of it.labels ?? []) {
+    if (typeof l.name !== "string" || !/^[0-9a-fA-F]{6}$/.test(l.color ?? "")) return null;
+    labels.push({ name: l.name.slice(0, 100), color: l.color });
+  }
+  return { number: it.number, title: String(it.title ?? "").slice(0, 300), status: it.status, url: it.url, labels };
+}
+
 // Obergrenze der App: 2000 Items. Erledigtes faellt zuerst raus, dann das Aelteste.
 export function fuerStage(items, konfig = KONFIG) {
-  const roh = items.map(({ number, title, status, url, labels }) => ({ number, title, status, url, labels }));
-  if (roh.length <= konfig.maxItems) return { items: roh, gekappt: 0 };
+  const gueltig = [];
+  let verworfen = 0;
+  for (const it of items) {
+    const k = itemFuerApp(it, konfig);
+    if (k) gueltig.push({ ...k, updatedAt: it.updatedAt ?? "" });
+    else verworfen++;
+  }
+  const ohneZeit = ({ updatedAt, ...rest }) => rest;
+  if (gueltig.length <= konfig.maxItems) return { items: gueltig.map(ohneZeit), gekappt: 0, verworfen };
   const rang = (it) => (it.status === "Done (PROD)" ? 0 : 1);
-  const sortiert = [...items].sort((a, b) => rang(b) - rang(a) || b.updatedAt.localeCompare(a.updatedAt));
+  const sortiert = [...gueltig].sort((a, b) => rang(b) - rang(a) || b.updatedAt.localeCompare(a.updatedAt));
   const behalten = sortiert.slice(0, konfig.maxItems);
-  return {
-    items: behalten.map(({ number, title, status, url, labels }) => ({ number, title, status, url, labels })),
-    gekappt: items.length - behalten.length,
-  };
+  return { items: behalten.map(ohneZeit), gekappt: gueltig.length - behalten.length, verworfen };
 }
 
 // ── HTTP gegen eine Stage ────────────────────────────────────────────────────
@@ -117,10 +135,10 @@ export async function stageAufruf(fetchFn, basis, pfad, methode, schluessel, bod
 
 // ── Lesen: Stand an eine Stage schieben ──────────────────────────────────────
 export async function standSenden(fetchFn, stage, basis, schluessel, board, konfig = KONFIG) {
-  const { items, gekappt } = fuerStage(board.items, konfig);
+  const { items, gekappt, verworfen } = fuerStage(board.items, konfig);
   const r = await stageAufruf(fetchFn, basis, "/api/board-status", "PUT", schluessel, { generatedAt: new Date().toISOString(), items }, konfig);
   // 409: die Stage hat einen neueren Stand -- kein Fehler, nichts zurueckdrehen.
-  if (r.status === 200 || r.status === 409) return { ok: true, status: r.status, anzahl: items.length, gekappt };
+  if (r.status === 200 || r.status === 409) return { ok: true, status: r.status, anzahl: items.length, gekappt, verworfen };
   const hinweis = { 401: "Schluessel falsch", 503: "Schluessel auf der Stage nicht gesetzt", 404: "Endpunkt fehlt", 400: "Schema abgelehnt" }[r.status] ?? "unerwartet";
   return { ok: false, status: r.status, fehler: `${stage}: PUT /api/board-status -> ${r.status} (${hinweis})` };
 }
@@ -237,7 +255,7 @@ export async function lauf(opt, deps = {}) {
             const r = await standSenden(fetchFn, stage, basis, key, board, konfig);
             ergebnisse[stage] = { ...ergebnisse[stage], lesen: r };
             if (!r.ok) teile.push(r.fehler);
-            else log(`${stage}: ${r.anzahl} Karten gesendet (${r.status})${r.gekappt ? `, ${r.gekappt} wegen Obergrenze weggelassen` : ""}`);
+            else log(`${stage}: ${r.anzahl} Karten gesendet (${r.status})${r.gekappt ? `, ${r.gekappt} wegen Obergrenze weggelassen` : ""}${r.verworfen ? `, ${r.verworfen} mit ungueltiger Form ausgelassen` : ""}`);
           }
           if (!opt.nurLesen) {
             const r = await schreibenFuerStage(fetchFn, gql, stage, basis, key, board, konfig);
