@@ -84,13 +84,15 @@ export async function boardLesen(gql, konfig = KONFIG) {
 }
 
 // Form der App (400 sonst, ein schlechtes Item kippt den ganzen Push): Item bereinigen oder auslassen.
+const STATUS_SPALTEN = ["User Request", "New", "Next", "Todo", "In Progress", "Review (DEV)", "Review (TEST)", "Done (PROD)", "Someday"];
 const ISSUE_URL = (repo) => new RegExp(`^https://github\\.com/${repo.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}/issues/\\d+$`);
 export function itemFuerApp(it, konfig = KONFIG) {
   if (!Number.isInteger(it.number) || it.number <= 0) return null;
-  if (typeof it.status !== "string" || !it.status) return null;
-  if (typeof it.url !== "string" || !ISSUE_URL(konfig.repo).test(it.url)) return null;
+  if (!STATUS_SPALTEN.includes(it.status)) return null;
+  if (typeof it.url !== "string" || it.url.length > 200 || !ISSUE_URL(konfig.repo).test(it.url)) return null;
+  if (typeof it.title !== "string" || !it.title) return null;
   const labels = [];
-  for (const l of it.labels ?? []) {
+  for (const l of (it.labels ?? []).slice(0, 20)) {
     if (typeof l.name !== "string" || !/^[0-9a-fA-F]{6}$/.test(l.color ?? "")) return null;
     labels.push({ name: l.name.slice(0, 100), color: l.color });
   }
@@ -100,11 +102,14 @@ export function itemFuerApp(it, konfig = KONFIG) {
 // Obergrenze der App: 2000 Items. Erledigtes faellt zuerst raus, dann das Aelteste.
 export function fuerStage(items, konfig = KONFIG) {
   const gueltig = [];
+  const gesehen = new Set();
   let verworfen = 0;
   for (const it of items) {
     const k = itemFuerApp(it, konfig);
-    if (k) gueltig.push({ ...k, updatedAt: it.updatedAt ?? "" });
-    else verworfen++;
+    if (k && !gesehen.has(k.number)) {
+      gesehen.add(k.number);
+      gueltig.push({ ...k, updatedAt: it.updatedAt ?? "" });
+    } else verworfen++;
   }
   const ohneZeit = ({ updatedAt, ...rest }) => rest;
   if (gueltig.length <= konfig.maxItems) return { items: gueltig.map(ohneZeit), gekappt: 0, verworfen };
@@ -182,7 +187,8 @@ export async function schreibenFuerStage(fetchFn, gql, stage, basis, schluessel,
     if (!ergebnis.ok) abgelehnt.push(`${move.id} (#${move.issueNumber}): ${ergebnis.error}`);
     const body = ergebnis.ok ? { ok: true } : { ok: false, error: ergebnis.error };
     const p = await stageAufruf(fetchFn, basis, `/api/board-moves/${encodeURIComponent(move.id)}/result`, "POST", schluessel, body, konfig);
-    if (p.status !== 200) fehler.push(`${stage}: Ergebnis fuer ${move.id} nicht angenommen (${p.status})`);
+    // 409 = App hat den Auftrag schon abgeschlossen, 404 = unbekannt: beides kein Jobfehler.
+    if (p.status !== 200 && p.status !== 409 && p.status !== 404) fehler.push(`${stage}: Ergebnis fuer ${move.id} nicht angenommen (${p.status})`);
     bearbeitet++;
   }
   return { ok: fehler.length === 0, fehler: fehler.join(" | "), bearbeitet, abgelehnt };

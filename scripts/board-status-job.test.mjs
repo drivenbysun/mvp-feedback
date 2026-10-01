@@ -102,6 +102,14 @@ describe("fuerStage: Form der App", () => {
     expect(r.verworfen).toBe(4);
   });
 
+  it("laesst Status ausserhalb der App-Liste aus, dedupliziert Nummern und kappt Labels auf 20", () => {
+    const viele = Array.from({ length: 30 }, (_, i) => ({ name: `l${i}`, color: "ffffff" }));
+    const r = fuerStage([gut(1), { ...gut(2), status: "Spalte X" }, gut(1), { ...gut(3), labels: viele }, { ...gut(4), title: "" }]);
+    expect(r.items.map((i) => i.number)).toEqual([1, 3]);
+    expect(r.items[1].labels).toHaveLength(20);
+    expect(r.verworfen).toBe(3);
+  });
+
   it("kuerzt title auf 300 und label.name auf 100 Zeichen", () => {
     const [i] = fuerStage([{ ...gut(1), title: "x".repeat(500), labels: [{ name: "y".repeat(200), color: "ffffff" }] }]).items;
     expect(i.title).toHaveLength(300);
@@ -236,6 +244,15 @@ describe("lauf", () => {
     // Ablehnung = fachliches Ergebnis, geht an die App zurueck, kein Jobfehler, kein Alarm
     expect(r.exit).toBe(0);
     expect(r.ergebnisse.dev.schreiben.abgelehnt.length).toBe(1);
+    expect(env.alarmFn).not.toHaveBeenCalled();
+  });
+
+  it("Ergebnis 409 (App hat den Auftrag schon abgeschlossen) ist kein Jobfehler", async () => {
+    const { gql } = boardAttrappe(items);
+    const { fetchFn } = stageAttrappe({ moves: [{ id: "m1", issueNumber: 1, fromStatus: "Review (DEV)", toStatus: "Review (TEST)" }], resultStatus: 409 });
+    const env = umgebung();
+    const r = await lauf({ stages: ["dev"], nurSchreiben: true }, { ...env, gql, fetchFn });
+    expect(r.exit).toBe(0);
     expect(env.alarmFn).not.toHaveBeenCalled();
   });
 
