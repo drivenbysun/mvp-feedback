@@ -34,6 +34,7 @@ export const KONFIG = {
   labelPraefix: "app:",
   maxProLauf: 25,
   maxSeiten: 5,
+  maxItemSeiten: 30,
   gesamtSekunden: 240,
   aufrufSekunden: 30,
 };
@@ -75,6 +76,9 @@ export function ghGraphql(query, variables = {}, { aufrufSekunden = KONFIG.aufru
 const Q_BOARD = `query($o:String!,$n:Int!){ user(login:$o){ projectV2(number:$n){ id title
   field(name:"Status"){ ... on ProjectV2SingleSelectField { id options{ id name } } } } } }`;
 
+const Q_BOARD_ITEMS = `query($o:String!,$n:Int!,$c:String){ user(login:$o){ projectV2(number:$n){ items(first:100, after:$c){
+  pageInfo{ hasNextPage endCursor } nodes{ content{ ... on Issue{ id } } } } } } }`;
+
 const Q_REPOS = `query($o:String!,$c:String){ repositoryOwner(login:$o){ repositories(first:100, after:$c, isArchived:false){
   pageInfo{ hasNextPage endCursor }
   nodes{ nameWithOwner labels(first:30, query:"app:"){ nodes{ name } } } } } }`;
@@ -108,24 +112,34 @@ async function ladeBoard(gql, konfig, nummer) {
   };
 }
 
-async function seitenweise(gql, query, vars, holen, konfig) {
+async function seitenweise(gql, query, vars, holen, konfig, maxSeiten = konfig.maxSeiten) {
   const alle = [];
   let cursor = null;
-  for (let i = 0; i < konfig.maxSeiten; i++) {
+  for (let i = 0; i < maxSeiten; i++) {
     const d = await gql(query, { ...vars, c: cursor });
     const seite = holen(d);
     alle.push(...(seite?.nodes ?? []));
     if (!seite?.pageInfo?.hasNextPage) return alle;
     cursor = seite.pageInfo.endCursor;
   }
-  throw new Error(`mehr als ${konfig.maxSeiten} Seiten -- Obergrenze erreicht, nichts geraten`);
+  throw new Error(`mehr als ${maxSeiten} Seiten -- Obergrenze erreicht, nichts geraten`);
 }
 
 export async function planen(gql, konfig = KONFIG) {
   const boards = {};
   for (const [schluessel, nr] of Object.entries(konfig.boards)) boards[schluessel] = await ladeBoard(gql, konfig, nr);
   const bekannteBoardIds = new Set(Object.values(boards).map((b) => b.id));
+  const alleBoardNummern = [...Object.values(konfig.boards), ...konfig.weitereBoards];
   for (const nr of konfig.weitereBoards) bekannteBoardIds.add((await ladeBoard(gql, konfig, nr)).id);
+
+  // Der Blick vom Issue aus (projectItems) ist NICHT verlaesslich: fuer Repos in einer
+  // anderen Organisation (drivenbysun/*) liefert er leer, obwohl das Issue auf dem Board
+  // liegt. Verbindlich ist der Blick vom Board aus.
+  const aufBoards = new Set();
+  for (const nr of alleBoardNummern) {
+    const items = await seitenweise(gql, Q_BOARD_ITEMS, { o: konfig.boardEigentuemer, n: nr }, (d) => d?.user?.projectV2?.items, konfig, konfig.maxItemSeiten);
+    for (const it of items) if (it.content?.id) aufBoards.add(it.content.id);
+  }
 
   const repos = new Map();
   for (const eig of konfig.eigentuemer) {
@@ -143,7 +157,7 @@ export async function planen(gql, konfig = KONFIG) {
     const issues = await seitenweise(gql, Q_ISSUES, { o: eig, r: name, l: labels }, (d) => d?.repository?.issues, konfig);
     for (const is of issues) {
       const board = boards[boardSchluesselFuer((is.labels?.nodes ?? []).map((l) => l.name), konfig)];
-      const aufBoard = (is.projectItems?.nodes ?? []).some((n) => bekannteBoardIds.has(n.project?.id));
+      const aufBoard = aufBoards.has(is.id) || (is.projectItems?.nodes ?? []).some((n) => bekannteBoardIds.has(n.project?.id));
       let aktion = "sortieren";
       if (aufBoard) aktion = "schon_auf_board";
       else if (!board.spaltenId || !board.statusFeldId) aktion = "spalte_fehlt";

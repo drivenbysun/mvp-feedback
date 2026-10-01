@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { KONFIG, ausfuehren, boardSchluesselFuer, lauf, planen } from "./board-einsortierer.mjs";
 
 // Attrappe der GitHub-GraphQL-Schnittstelle. Merkt sich jede Schreib-Mutation.
-function attrappe({ spalteBoard1 = false, issues, failSet = false, failDelete = false } = {}) {
+function attrappe({ spalteBoard1 = false, issues, failSet = false, failDelete = false, boardItems = {} } = {}) {
   const schreib = [];
   const board = (nr) => ({
     id: `B${nr}`,
@@ -27,6 +27,10 @@ function attrappe({ spalteBoard1 = false, issues, failSet = false, failDelete = 
   const tabelle = issues ?? standard;
 
   const gql = vi.fn(async (query, vars) => {
+    if (query.includes("items(first")) {
+      const ids = boardItems[vars.n] ?? [];
+      return { user: { projectV2: { items: { pageInfo: { hasNextPage: false }, nodes: ids.map((id) => ({ content: { id } })) } } } };
+    }
     if (query.includes("projectV2(number")) return { user: { projectV2: board(vars.n) } };
     if (query.includes("repositoryOwner")) {
       const eig = vars.o;
@@ -87,8 +91,17 @@ describe("planen (nur lesen)", () => {
     expect(schreib).toEqual([]);
   });
 
+  it("erkennt Items, die nur vom Board aus sichtbar sind (projectItems am Issue leer)", async () => {
+    const { gql } = attrappe({ boardItems: { 2: ["I4"] } });
+    const plan = await planen(gql);
+    expect(plan.eintraege.find((e) => e.nummer === 4).aktion).toBe("schon_auf_board");
+    const erg = await ausfuehren(gql, plan);
+    expect(erg.sortiert.map((e) => e.nummer)).not.toContain(4);
+  });
+
   it("filtert das unscharfe Label-Query strikt auf app:", async () => {
     const gql = vi.fn(async (query, vars) => {
+      if (query.includes("items(first")) return { user: { projectV2: { items: { pageInfo: { hasNextPage: false }, nodes: [] } } } };
       if (query.includes("projectV2(number")) return { user: { projectV2: { id: `B${vars.n}`, title: "t", field: { id: "F", options: [{ id: "o", name: "User Request" }] } } } };
       if (query.includes("repositoryOwner"))
         return { repositoryOwner: { repositories: { pageInfo: { hasNextPage: false }, nodes: [{ nameWithOwner: "x/y", labels: { nodes: [{ name: "area:mobile" }] } }] } } };
@@ -100,6 +113,7 @@ describe("planen (nur lesen)", () => {
 
   it("bricht bei mehr Seiten als erlaubt ab statt zu raten", async () => {
     const gql = vi.fn(async (query, vars) => {
+      if (query.includes("items(first")) return { user: { projectV2: { items: { pageInfo: { hasNextPage: false }, nodes: [] } } } };
       if (query.includes("projectV2(number")) return { user: { projectV2: { id: `B${vars.n}`, title: "t", field: { id: "F", options: [] } } } };
       return { repositoryOwner: { repositories: { pageInfo: { hasNextPage: true, endCursor: "c" }, nodes: [] } } };
     });
