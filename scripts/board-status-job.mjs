@@ -45,7 +45,7 @@ export const KONFIG = {
 const Q_BOARD = `query($o:String!,$n:Int!,$c:String){ user(login:$o){ projectV2(number:$n){ id
   field(name:"Status"){ ... on ProjectV2SingleSelectField { id options{ id name } } }
   items(first:100, after:$c){ pageInfo{ hasNextPage endCursor } nodes{ id
-    content{ ... on Issue{ number title url state updatedAt repository{ nameWithOwner } labels(first:30){ nodes{ name color } } } }
+    content{ ... on Issue{ number title body url state updatedAt repository{ nameWithOwner } labels(first:30){ nodes{ name color } } } }
     status: fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue{ name } } } } } } }`;
 const M_SET = `mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){ updateProjectV2ItemFieldValue(input:{projectId:$p,itemId:$i,fieldId:$f,value:{singleSelectOptionId:$o}}){ projectV2Item{ id } } }`;
 
@@ -67,7 +67,7 @@ export async function boardLesen(gql, konfig = KONFIG) {
         const labels = (c?.labels?.nodes ?? []).map((l) => ({ name: l.name, color: l.color }));
         if (!c?.number || c.repository?.nameWithOwner !== konfig.repo || !labels.some((l) => l.name === konfig.label)) continue;
         items.push({
-          itemId: k.id, number: c.number, title: c.title, url: c.url, status: k.status?.name ?? null,
+          itemId: k.id, number: c.number, title: c.title, body: c.body ?? "", url: c.url, status: k.status?.name ?? null,
           labels, updatedAt: c.updatedAt ?? "",
         });
       }
@@ -85,6 +85,7 @@ export async function boardLesen(gql, konfig = KONFIG) {
 
 // Form der App (400 sonst, ein schlechtes Item kippt den ganzen Push): Item bereinigen oder auslassen.
 const STATUS_SPALTEN = ["User Request", "New", "Next", "Todo", "In Progress", "Review (DEV)", "Review (TEST)", "Done (PROD)", "Someday"];
+const BODY_SPALTEN = ["Review (DEV)", "Review (TEST)"];
 const ISSUE_URL = (repo) => new RegExp(`^https://github\\.com/${repo.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}/issues/\\d+$`);
 export function itemFuerApp(it, konfig = KONFIG) {
   if (!Number.isInteger(it.number) || it.number <= 0) return null;
@@ -96,7 +97,10 @@ export function itemFuerApp(it, konfig = KONFIG) {
     if (typeof l.name !== "string" || !/^[0-9a-fA-F]{6}$/.test(l.color ?? "")) return null;
     labels.push({ name: l.name.slice(0, 100), color: l.color });
   }
-  return { number: it.number, title: String(it.title ?? "").slice(0, 300), status: it.status, url: it.url, labels };
+  const out = { number: it.number, title: it.title.slice(0, 300), status: it.status, url: it.url, labels };
+  // Abnahme-Ansicht zeigt den Volltext: nur fuer die Review-Spalten, auf 4000 gekuerzt (App weist mehr mit 400 ab).
+  if (BODY_SPALTEN.includes(it.status) && typeof it.body === "string" && it.body) out.body = it.body.slice(0, 4000);
+  return out;
 }
 
 // Obergrenze der App: 2000 Items. Erledigtes faellt zuerst raus, dann das Aelteste.

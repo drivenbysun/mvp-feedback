@@ -110,6 +110,19 @@ describe("fuerStage: Form der App", () => {
     expect(r.verworfen).toBe(3);
   });
 
+  it("schickt body nur fuer Review (DEV)/(TEST), auf 4000 gekuerzt", () => {
+    const r = fuerStage([
+      { ...gut(1), status: "Review (DEV)", body: "b".repeat(9000) },
+      { ...gut(2), status: "Review (TEST)", body: "kurz" },
+      { ...gut(3), status: "Todo", body: "geheim" },
+      { ...gut(4), status: "Done (PROD)", body: "alt" },
+      { ...gut(5), status: "Review (DEV)", body: "" },
+    ]).items;
+    expect(r[0].body).toHaveLength(4000);
+    expect(r[1].body).toBe("kurz");
+    expect(r.slice(2).every((i) => !("body" in i))).toBe(true);
+  });
+
   it("kuerzt title auf 300 und label.name auf 100 Zeichen", () => {
     const [i] = fuerStage([{ ...gut(1), title: "x".repeat(500), labels: [{ name: "y".repeat(200), color: "ffffff" }] }]).items;
     expect(i.title).toHaveLength(300);
