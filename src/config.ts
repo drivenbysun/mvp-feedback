@@ -16,13 +16,20 @@ export interface IntakeTarget {
   /** Optional: Ziel-Spaltenname (zur Laufzeit per Name aufgelöst). */
   columnName?: string;
   /**
-   * Optional: Tag/Name des GitHub-Releases, an das Anhänge als Assets gehängt
-   * werden (Default: "feedback-attachments"). Assets liegen dort, wo das Board
-   * lebt → Board-Mitglieder öffnen sie ohne separaten App-Login, und es entsteht
-   * KEIN Repo-Commit (löst keinen Deploy aus). Wird bei Bedarf angelegt.
+   * Nur mit `githubReleaseAttachments: true` relevant: Tag/Name des GitHub-
+   * Releases, an das Anhänge als Assets gehängt werden (Default:
+   * "feedback-attachments").
    */
   attachmentReleaseTag?: string;
 }
+
+/**
+ * Speicher-Haken: die App legt den Anhang in IHREM eigenen, login-geschützten
+ * Speicher ab und gibt die URL zurück (https). Ins Issue kommt nur dieser Link,
+ * die Datei selbst verlässt die App nie Richtung GitHub. `null`/Fehler =
+ * dieser Anhang wird verworfen (Feedback scheitert nie am Anhang).
+ */
+export type StoreAttachment = (attachment: IntakeAttachment) => Promise<string | null>;
 
 /** Ein einzelner Anhang, transport-agnostisch (Base64, damit Server-Actions ihn tragen). */
 export interface IntakeAttachment {
@@ -39,6 +46,18 @@ export interface FeedbackConfig extends IntakeTarget {
    * App — kein Project-Lead-Briefing nötig, das Tool routet selbst (Dogfooding).
    */
   platform?: IntakeTarget;
+  /**
+   * Speicher-Haken für Anhänge (siehe StoreAttachment). OHNE Haken sind Anhänge
+   * AUS: der Server verwirft sie und lädt nie etwas zu GitHub hoch --
+   * Screenshots können Personendaten zeigen und gehören nicht in ein GitHub-Repo.
+   */
+  storeAttachment?: StoreAttachment;
+  /**
+   * Ausdrückliches Opt-in für die alte Strecke: Anhänge als GitHub-Release-Assets
+   * im Ziel-Repo. Nur für Apps ohne Personendaten sinnvoll; nur wirksam, wenn
+   * KEIN `storeAttachment` gesetzt ist. Default false.
+   */
+  githubReleaseAttachments?: boolean;
   /** Env-Variable mit dem GitHub-Token (Default: GH_PROJECT_TOKEN). */
   tokenEnv?: string;
   /**
@@ -92,7 +111,7 @@ export interface IntakeInput {
    * gemeinsamer Topf für alle anonymen Absender, der sich gegenseitig sperrt).
    */
   rateLimitKey?: string;
-  /** Optionale Datei-Anhänge; werden als GitHub-Release-Assets ans Issue gehängt. */
+  /** Optionale Datei-Anhänge; werden nur über config.storeAttachment (oder Opt-in) verlinkt. */
   attachments?: IntakeAttachment[];
   /**
    * "app" (Default) = betrifft die App → App-Ziel. "platform" = betrifft das

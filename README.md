@@ -28,7 +28,7 @@ export async function sendFeedback(fd: FormData) {
       appLabel: "app:agency-os",
       boardProjectId: "PVT_...",        // gemeinsames MVP-Board (optional)
       statusFieldId: "PVTSSF_...",       // optional
-      columnName: "Todo",                // optional (per Name aufgelöst)
+      columnName: "User Request",        // optional, Default "User Request" (per Name aufgelöst)
     },
     {
       kind: fd.get("kind") === "bug" ? "bug" : "feature",
@@ -55,11 +55,28 @@ Aufmacher ist unauffälliger (Sören/agency-os, 31.08.2026):
 ```
 
 ## Datei-Anhänge (Screenshots etc.)
-Das Widget hat ein Datei-Feld. Anhänge werden als **GitHub-Release-Assets** am Release
-`feedback-attachments` hochgeladen (Tag via `attachmentReleaseTag` überschreibbar) und im
-Issue-Body verlinkt — bei öffentlichen Repos als **Inline-Bild**, bei privaten als
-**klickbarer Link** (für eingeloggte Board-Mitglieder). **Kein Repo-Commit → kein Deploy.**
-So reisen Anhänge mit aufs Board, ohne separaten App-Login (der alte Magenta-Bug).
+**Standard: AUS.** Screenshots können Personendaten zeigen (Lebensläufe, Kundendaten) und
+gehören nicht in ein GitHub-Repo. Ohne Speicher-Haken verwirft der Server Anhänge, ruft nie
+`uploads.github.com` auf, und das Widget blendet Datei-Feld und Screenshot-Knopf aus.
+
+Anhänge einschalten = die App liefert einen **Speicher-Haken** (eigener, login-geschützter
+Speicher); ins Issue kommt nur der Link:
+```ts
+submitFeedback({
+  ...config,
+  storeAttachment: async (att) => {
+    const url = await meinSpeicher.ablegen(att.filename, att.contentType, att.dataBase64);
+    return url; // https-URL, oder null = Anhang verwerfen
+  },
+}, input);
+// Widget: <FeedbackWidget allowAttachments allowScreenshot ... />
+```
+Nur `http(s)`-URLs ohne Leerzeichen/Klammern werden verlinkt; ein Fehler im Haken verwirft nur
+diesen Anhang, das Feedback geht trotzdem raus.
+
+Alte Strecke (GitHub-Release-Assets, Tag via `attachmentReleaseTag`) gibt es nur noch als
+ausdrückliches Opt-in `githubReleaseAttachments: true` — für Apps ohne Personendaten, wirkt
+nur ohne `storeAttachment`.
 
 Consumer-Seite: `attachmentsFromFormData(fd)` zieht die Dateien aus dem FormData (Base64,
 Grenzen 5×10 MB). **Wichtig:** Next.js begrenzt Server-Action-Bodies auf 1 MB — im

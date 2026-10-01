@@ -11,6 +11,7 @@ export type {
   IntakeResult,
   IntakeKind,
   IntakeAttachment,
+  StoreAttachment,
   IntakeTarget,
   FeedbackScope,
   CreateBoardIssueInput,

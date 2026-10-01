@@ -97,6 +97,13 @@ export interface FeedbackWidgetProps {
    * ohne dieses Feature kein zusätzliches Gewicht bekommen.
    */
   allowScreenshot?: boolean;
+  /**
+   * Zeigt das Datei-Feld (und den Screenshot-Knopf). Default false: ohne
+   * Anhang-Speicher in der Server-Config (`storeAttachment`) verwirft der
+   * Server Anhaenge ohnehin -- das Feld waere eine Luege. Nur auf true setzen,
+   * wenn die App einen eigenen Speicher-Haken uebergibt.
+   */
+  allowAttachments?: boolean;
 }
 
 export function FeedbackWidget({
@@ -113,6 +120,7 @@ export function FeedbackWidget({
   customIcon,
   minLength = 10,
   allowScreenshot = false,
+  allowAttachments = false,
 }: FeedbackWidgetProps) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<"bug" | "feature">("feature");
@@ -275,6 +283,7 @@ export function FeedbackWidget({
                     fontSize: 14, resize: "vertical", outline: "none",
                   }}
                 />
+                {allowAttachments && (
                 <label style={{ display: "block", marginTop: 10 }}>
                   <span style={{ fontSize: 12, color: "#9aa0aa" }}>Anhänge (optional, z. B. Screenshot)</span>
                   <input
@@ -292,7 +301,8 @@ export function FeedbackWidget({
                     </span>
                   )}
                 </label>
-                {allowScreenshot && (
+                )}
+                {allowAttachments && allowScreenshot && (
                   <button
                     type="button"
                     disabled={capturing}

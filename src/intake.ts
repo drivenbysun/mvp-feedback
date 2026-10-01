@@ -1,7 +1,8 @@
-import type { CreateBoardIssueInput, FeedbackConfig, IntakeAttachment, IntakeInput, IntakeResult, IntakeTarget } from "./config";
+import type { CreateBoardIssueInput, FeedbackConfig, StoreAttachment, IntakeAttachment, IntakeInput, IntakeResult, IntakeTarget } from "./config";
 import { pruefeRateLimit } from "./rate-limit";
 
 const DEFAULT_ATTACHMENT_TAG = "feedback-attachments";
+export const DEFAULT_COLUMN_NAME = "User Request";
 
 // ============================================================
 // Generischer GitHub-Intake (aus dem Magenta-OS-Muster extrahiert, aber
@@ -115,14 +116,51 @@ async function uploadAttachmentAsset(
   }
 }
 
-// Lädt alle Anhänge hoch und rendert einen Markdown-Block fürs Issue (Bilder
-// werden inline eingebettet, sonst als Link). Leerer String, wenn nichts klappt.
+// Rendert den Anhang-Block fürs Issue. Reihenfolge: App-Haken (nur Link ins
+// Issue) > ausdrückliches GitHub-Opt-in > Anhänge verworfen. Ohne Haken und ohne
+// Opt-in wird NICHTS hochgeladen und uploads.github.com nie aufgerufen.
 async function buildAttachmentSection(
   token: string,
   target: IntakeTarget,
   attachments: IntakeAttachment[] | undefined,
+  store: StoreAttachment | undefined,
+  githubOptIn: boolean,
 ): Promise<string> {
   if (!attachments?.length) return "";
+  if (store) return buildHookSection(attachments, store);
+  if (!githubOptIn) {
+    return `\n\n_${attachments.length} Anhang/Anhänge verworfen: kein Anhang-Speicher konfiguriert._`;
+  }
+  return buildGithubReleaseSection(token, target, attachments);
+}
+
+async function buildHookSection(attachments: IntakeAttachment[], store: StoreAttachment): Promise<string> {
+  const lines: string[] = [];
+  let dropped = 0;
+  for (const att of attachments) {
+    let url: string | null = null;
+    try {
+      url = await store(att);
+    } catch {
+      url = null;
+    }
+    if (!url || !/^https?:\/\//i.test(url) || /[\s()<>]/.test(url)) {
+      dropped++;
+      continue;
+    }
+    const name = sanitizeAssetName(att.filename);
+    lines.push(`📎 [${name}](${url})`);
+  }
+  let out = lines.length ? `\n\n**Anhänge:**\n\n${lines.join("\n\n")}` : "";
+  if (dropped) out += `\n\n_${dropped} Anhang/Anhänge nicht gespeichert._`;
+  return out;
+}
+
+async function buildGithubReleaseSection(
+  token: string,
+  target: IntakeTarget,
+  attachments: IntakeAttachment[],
+): Promise<string> {
   const tag = target.attachmentReleaseTag ?? DEFAULT_ATTACHMENT_TAG;
   const releaseId = await ensureAttachmentReleaseId(token, target.repo, tag);
   if (!releaseId) return "";
@@ -166,11 +204,13 @@ async function resolveColumnOptionId(
   return options.find((o) => o.name === columnName)?.id ?? null;
 }
 
+// Titel: "BUG: ..." bzw. "FR: ..." -- zentral, damit alle Apps gleich titeln.
+// Ein schon vorhandenes Praefix im Titel wird nicht verdoppelt.
 function deriveTitle(input: IntakeInput): string {
-  if (input.title?.trim()) return input.title.trim().slice(0, 120);
-  const prefix = input.kind === "bug" ? "Bug" : "Feature";
-  const firstLine = input.text.trim().split("\n")[0].slice(0, 80);
-  return `[${prefix}] ${firstLine || "Meldung"}`;
+  const prefix = input.kind === "bug" ? "BUG" : "FR";
+  const raw = input.title?.trim() || input.text.trim().split("\n")[0].slice(0, 80);
+  const rest = raw.replace(/^(\[(bug|feature|fr)\]|(bug|fr)\s*:)\s*/i, "").trim() || "Meldung";
+  return `${prefix}: ${rest}`.slice(0, 120);
 }
 
 function buildBody(input: IntakeInput): string {
@@ -266,7 +306,13 @@ export async function submitFeedback(config: FeedbackConfig, input: IntakeInput)
 
   // Anhänge zuerst hochladen → Links wandern direkt in den Issue-Body, damit
   // sie mit aufs Board reisen (best-effort; Fehler = Body ohne Anhänge).
-  const attachmentSection = await buildAttachmentSection(token, target, input.attachments);
+  const attachmentSection = await buildAttachmentSection(
+    token,
+    target,
+    input.attachments,
+    config.storeAttachment,
+    config.githubReleaseAttachments === true,
+  );
 
   return createBoardIssue({
     token,
@@ -276,6 +322,6 @@ export async function submitFeedback(config: FeedbackConfig, input: IntakeInput)
     labels: [typeLabel, target.appLabel],
     boardProjectId: target.boardProjectId,
     statusFieldId: target.statusFieldId,
-    columnName: target.columnName,
+    columnName: target.columnName ?? DEFAULT_COLUMN_NAME,
   });
 }
