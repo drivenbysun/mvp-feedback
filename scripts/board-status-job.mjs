@@ -11,7 +11,7 @@
 // Schreiben: GET {stage}/api/board-moves -> Karte verschieben -> POST .../result
 // Schluessel: ~/.fabrik/keys/board-status-key-<stage>.txt (600). Nie loggen, nie im Alarmtext.
 
-import { readFileSync, mkdirSync, writeFileSync, statSync } from "node:fs";
+import { readFileSync, mkdirSync, writeFileSync, statSync, truncateSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -307,6 +307,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     nurSchreiben: argv.includes("--nur-schreiben"),
     trocken: argv.includes("--trocken"),
   };
+  // launchd haengt nur an: Log ab 1 MB leeren (O_APPEND, der Deskriptor bleibt gueltig).
+  try {
+    const LOG = "/tmp/fabrik-board-status-job.log";
+    if (statSync(LOG).size > 1_000_000) truncateSync(LOG, 0);
+  } catch {
+    /* kein Log, nichts zu tun */
+  }
   const wachhund = setTimeout(() => {
     console.error("FEHLER: Laufzeit-Obergrenze, Prozess wird beendet");
     process.exit(2);
