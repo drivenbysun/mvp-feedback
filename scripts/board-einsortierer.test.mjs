@@ -22,7 +22,7 @@ function attrappe({ spalteBoard1 = false, issues, failSet = false, failDelete = 
       { id: "I3", number: 3, title: "auf fremdem Board", url: "u3", projectItems: { nodes: [{ project: { id: "B1" } }] } },
     ],
     "drivenbysun/agency-os": [{ id: "I4", number: 4, title: "FR: neu", url: "u4", projectItems: { nodes: [] } }],
-    "ss-cowork-engineer/magenta-os": [{ id: "I5", number: 5, title: "magenta neu", url: "u5", projectItems: { nodes: [] } }],
+    "ss-cowork-engineer/magenta-os": [{ id: "I5", number: 5, title: "magenta neu", url: "u5", labels: { nodes: [{ name: "app:magenta-os" }] }, projectItems: { nodes: [] } }],
   };
   const tabelle = issues ?? standard;
 
@@ -64,10 +64,11 @@ function attrappe({ spalteBoard1 = false, issues, failSet = false, failDelete = 
 }
 
 describe("boardSchluesselFuer", () => {
-  it("magenta-os -> Board 1, alles andere -> Board 2", () => {
-    expect(boardSchluesselFuer("ss-cowork-engineer/magenta-os")).toBe("magenta");
-    expect(boardSchluesselFuer("drivenbysun/agency-os")).toBe("fabrik");
-    expect(boardSchluesselFuer("ss-cowork-engineer/staffhub")).toBe("fabrik");
+  it("app:magenta-os -> Board 1, alles andere -> Board 2", () => {
+    expect(boardSchluesselFuer(["app:magenta-os"])).toBe("magenta");
+    expect(boardSchluesselFuer(["type:bug", "app:magenta-os"])).toBe("magenta");
+    expect(boardSchluesselFuer(["app:agency-os"])).toBe("fabrik");
+    expect(boardSchluesselFuer(["app:staffhub"])).toBe("fabrik");
   });
 });
 

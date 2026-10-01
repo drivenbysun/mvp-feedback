@@ -28,8 +28,8 @@ export const KONFIG = {
   boards: { magenta: 1, fabrik: 2 },
   // Weitere Boards, die als "liegt schon auf einem Board" zaehlen (nie anfassen).
   weitereBoards: [3],
-  // Repo-Name (ohne Owner) -> Board. Alles andere -> fabrik.
-  magentaRepos: ["magenta-os"],
+  // Labels, die auf Board 1 gehoeren. Alles andere mit app:* -> Board 2.
+  magentaLabels: ["app:magenta-os"],
   spalte: "User Request",
   labelPraefix: "app:",
   maxProLauf: 25,
@@ -82,16 +82,15 @@ const Q_REPOS = `query($o:String!,$c:String){ repositoryOwner(login:$o){ reposit
 const Q_ISSUES = `query($o:String!,$r:String!,$l:[String!],$c:String){ repository(owner:$o,name:$r){
   issues(first:100, after:$c, states:OPEN, labels:$l){
     pageInfo{ hasNextPage endCursor }
-    nodes{ id number title url projectItems(first:20){ nodes{ project{ id } } } } } } }`;
+    nodes{ id number title url labels(first:30){ nodes{ name } } projectItems(first:20){ nodes{ project{ id } } } } } } }`;
 
 const M_ADD = `mutation($p:ID!,$c:ID!){ addProjectV2ItemById(input:{projectId:$p,contentId:$c}){ item{ id } } }`;
 const M_SET = `mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){ updateProjectV2ItemFieldValue(input:{projectId:$p,itemId:$i,fieldId:$f,value:{singleSelectOptionId:$o}}){ projectV2Item{ id } } }`;
 const M_DEL = `mutation($p:ID!,$i:ID!){ deleteProjectV2Item(input:{projectId:$p,itemId:$i}){ deletedItemId } }`;
 
 // ── Planen (nur lesen) ───────────────────────────────────────────────────────
-export function boardSchluesselFuer(repoNameWithOwner, konfig = KONFIG) {
-  const name = repoNameWithOwner.split("/")[1];
-  return konfig.magentaRepos.includes(name) ? "magenta" : "fabrik";
+export function boardSchluesselFuer(labelNamen, konfig = KONFIG) {
+  return labelNamen.some((n) => konfig.magentaLabels.includes(n)) ? "magenta" : "fabrik";
 }
 
 async function ladeBoard(gql, konfig, nummer) {
@@ -142,9 +141,8 @@ export async function planen(gql, konfig = KONFIG) {
   for (const [repo, labels] of repos) {
     const [eig, name] = repo.split("/");
     const issues = await seitenweise(gql, Q_ISSUES, { o: eig, r: name, l: labels }, (d) => d?.repository?.issues, konfig);
-    const schluessel = boardSchluesselFuer(repo, konfig);
-    const board = boards[schluessel];
     for (const is of issues) {
+      const board = boards[boardSchluesselFuer((is.labels?.nodes ?? []).map((l) => l.name), konfig)];
       const aufBoard = (is.projectItems?.nodes ?? []).some((n) => bekannteBoardIds.has(n.project?.id));
       let aktion = "sortieren";
       if (aufBoard) aktion = "schon_auf_board";
