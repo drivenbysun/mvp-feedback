@@ -351,13 +351,13 @@ describe("lauf", () => {
     expect(env.alarmFn).toHaveBeenCalledTimes(2);
   });
 
-  it("Board lesen: haengt eine Seite einmal, wiederholt der Job sie mit 60 s Limit und der Lauf gelingt", async () => {
+  it("Board lesen: haengt eine Seite einmal, wiederholt der Job sie mit 20 s Limit und der Lauf gelingt", async () => {
     const echt = boardAttrappe(items);
     let erster = true;
     const gql = vi.fn(async (query, vars, opt) => {
       if (erster) {
         erster = false;
-        throw new Error("gh: Zeitlimit 60s");
+        throw new Error("gh: Zeitlimit 20s");
       }
       return echt.gql(query, vars, opt);
     });
@@ -366,15 +366,23 @@ describe("lauf", () => {
     const r = await lauf({ stages: ["dev"], nurLesen: true }, { ...env, gql, fetchFn });
     expect(r.exit).toBe(0);
     expect(env.alarmFn).not.toHaveBeenCalled();
-    expect(gql.mock.calls.every((a) => a[2]?.aufrufSekunden === 60)).toBe(true);
+    expect(gql.mock.calls.every((a) => a[2]?.aufrufSekunden === 20)).toBe(true);
   });
 
-  it("Board lesen: nach dem zweiten Fehlversuch ist es ein Fehler (genau zwei Versuche je Seite)", async () => {
+  it("Board lesen: nach dem dritten Fehlversuch ist es ein Fehler (genau drei Versuche je Seite)", async () => {
     const gql = vi.fn(async () => {
-      throw new Error("gh: Zeitlimit 60s");
+      throw new Error("gh: Zeitlimit 20s");
     });
     await expect(boardLesen(gql, SCHNELL)).rejects.toThrow(/Zeitlimit/);
-    expect(gql).toHaveBeenCalledTimes(2);
+    expect(gql).toHaveBeenCalledTimes(3);
+  });
+
+  it("Board lesen: ist die Gesamtfrist abgelaufen, gibt es keinen weiteren Versuch", async () => {
+    const gql = vi.fn(async () => {
+      throw new Error("gh: Zeitlimit 20s");
+    });
+    await expect(boardLesen(gql, { ...SCHNELL, leseGesamtSekunden: -1 })).rejects.toThrow(/Zeitlimit/);
+    expect(gql).toHaveBeenCalledTimes(1);
   });
 
   it("Alarm erst nach 3 Fehllaeufen in Folge, ein Erfolg setzt den Zaehler zurueck, Entwarnung nur nach Alarm", async () => {

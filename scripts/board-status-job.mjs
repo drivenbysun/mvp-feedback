@@ -33,10 +33,12 @@ export const KONFIG = {
   maxMovesProStage: 50,
   httpSekunden: 20,
   gesamtSekunden: 200,
-  // Board lesen: eine Seite braucht normal ~2 s; haengt gh einmal, hilft ein neuer Versuch mehr als ein langes Warten.
-  leseAufrufSekunden: 60,
-  leseVersuche: 2,
+  // Board lesen: eine Seite braucht ~2 s. Ein haengender gh-Aufruf kommt nicht mehr zurueck (gemessen: 60 s und 60 s
+  // hintereinander, minutenlang haengende gh-Prozesse) -- kurzes Limit + mehrere frische Versuche statt langem Warten.
+  leseAufrufSekunden: 20,
+  leseVersuche: 3,
   leseWartenMs: 3000,
+  leseGesamtSekunden: 150,
   // Alarm erst, wenn ein Stage so oft hintereinander fehlschlaegt (5-Minuten-Takt: ~15 Minuten).
   alarmNachFehlern: 3,
   // Je Stage genau ein Uebergang (Ziel -> erforderlicher Ausgangsstatus); prod: keiner.
@@ -56,9 +58,10 @@ const Q_BOARD = `query($o:String!,$n:Int!,$c:String){ user(login:$o){ projectV2(
 const M_SET = `mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){ updateProjectV2ItemFieldValue(input:{projectId:$p,itemId:$i,fieldId:$f,value:{singleSelectOptionId:$o}}){ projectV2Item{ id } } }`;
 
 // ── Board lesen ──────────────────────────────────────────────────────────────
-async function seiteLesen(gql, vars, konfig) {
+async function seiteLesen(gql, vars, konfig, frist) {
   let letzter;
   for (let v = 1; v <= konfig.leseVersuche; v++) {
+    if (v > 1 && Date.now() > frist) break;
     try {
       return await gql(Q_BOARD, vars, { aufrufSekunden: konfig.leseAufrufSekunden });
     } catch (e) {
@@ -73,8 +76,9 @@ export async function boardLesen(gql, konfig = KONFIG) {
   let projekt = null;
   const knoten = [];
   let cursor = null;
+  const frist = Date.now() + konfig.leseGesamtSekunden * 1000;
   for (let i = 0; i < konfig.maxItemSeiten; i++) {
-    const d = await seiteLesen(gql, { o: konfig.eigentuemer, n: konfig.boardNummer, c: cursor }, konfig);
+    const d = await seiteLesen(gql, { o: konfig.eigentuemer, n: konfig.boardNummer, c: cursor }, konfig, frist);
     const p = d?.user?.projectV2;
     if (!p?.id) throw new Error(`Board ${konfig.boardNummer} nicht lesbar`);
     projekt ??= p;
