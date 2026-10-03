@@ -45,9 +45,12 @@ function stageAttrappe({ putStatus = 200, getStatus = 200, moves = [], resultSta
   return { fetchFn, aufrufe };
 }
 
+// Alarm sofort (1) und ohne Wartezeit zwischen Leseversuchen: die Alarm-Verzoegerung wird in eigenen Tests geprueft.
+const SCHNELL = { ...KONFIG, leseWartenMs: 0, alarmNachFehlern: 1 };
+
 function umgebung(extra = {}) {
   const zustand = { daten: {}, lesen() { return this.daten; }, schreiben(z) { this.daten = z; } };
-  return { alarmFn: vi.fn(), zustand, schluessel: (s) => `KEY-${s}`, log: vi.fn(), ...extra };
+  return { alarmFn: vi.fn(), zustand, schluessel: (s) => `KEY-${s}`, log: vi.fn(), konfig: SCHNELL, ...extra };
 }
 
 describe("boardLesen / fuerStage", () => {
@@ -346,6 +349,69 @@ describe("lauf", () => {
     expect(r.exit).toBe(1);
     expect(fetchFn).not.toHaveBeenCalled();
     expect(env.alarmFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("Board lesen: haengt eine Seite einmal, wiederholt der Job sie mit 60 s Limit und der Lauf gelingt", async () => {
+    const echt = boardAttrappe(items);
+    let erster = true;
+    const gql = vi.fn(async (query, vars, opt) => {
+      if (erster) {
+        erster = false;
+        throw new Error("gh: Zeitlimit 60s");
+      }
+      return echt.gql(query, vars, opt);
+    });
+    const { fetchFn } = stageAttrappe();
+    const env = umgebung();
+    const r = await lauf({ stages: ["dev"], nurLesen: true }, { ...env, gql, fetchFn });
+    expect(r.exit).toBe(0);
+    expect(env.alarmFn).not.toHaveBeenCalled();
+    expect(gql.mock.calls.every((a) => a[2]?.aufrufSekunden === 60)).toBe(true);
+  });
+
+  it("Board lesen: nach dem zweiten Fehlversuch ist es ein Fehler (genau zwei Versuche je Seite)", async () => {
+    const gql = vi.fn(async () => {
+      throw new Error("gh: Zeitlimit 60s");
+    });
+    await expect(boardLesen(gql, SCHNELL)).rejects.toThrow(/Zeitlimit/);
+    expect(gql).toHaveBeenCalledTimes(2);
+  });
+
+  it("Alarm erst nach 3 Fehllaeufen in Folge, ein Erfolg setzt den Zaehler zurueck, Entwarnung nur nach Alarm", async () => {
+    const { gql } = boardAttrappe(items);
+    const kaputt = stageAttrappe({ putStatus: 500 });
+    const heil = stageAttrappe();
+    const konfig = { ...SCHNELL, alarmNachFehlern: 3 };
+    const env = umgebung({ konfig });
+    const los = (f) => lauf({ stages: ["dev"], nurLesen: true }, { ...env, gql, fetchFn: f.fetchFn });
+    await los(kaputt);
+    await los(kaputt);
+    expect(env.alarmFn).not.toHaveBeenCalled();
+    await los(heil);
+    expect(env.alarmFn).not.toHaveBeenCalled();
+    expect(env.zustand.daten.folge.dev).toBe(0);
+    await los(kaputt);
+    await los(kaputt);
+    expect(env.alarmFn).not.toHaveBeenCalled();
+    await los(kaputt);
+    expect(env.alarmFn).toHaveBeenCalledTimes(1);
+    expect(env.alarmFn.mock.calls[0][0]).toBe("rot");
+    expect(env.alarmFn.mock.calls[0][2]).toMatch(/3 Laeufe in Folge/);
+    await los(kaputt);
+    expect(env.alarmFn).toHaveBeenCalledTimes(1);
+    await los(heil);
+    expect(env.alarmFn).toHaveBeenCalledTimes(2);
+    expect(env.alarmFn.mock.calls[1][0]).toBe("gruen");
+  });
+
+  it("Alarm-Zaehler laeuft je Stage getrennt", async () => {
+    const { gql } = boardAttrappe(items);
+    const env = umgebung({ konfig: { ...SCHNELL, alarmNachFehlern: 2 } });
+    const fetchFn = vi.fn(async (url) => ({ status: url.includes("-dev.") ? 500 : 200, json: async () => ({ ok: !url.includes("-dev.") }) }));
+    await lauf({ stages: ["dev", "test"], nurLesen: true }, { ...env, gql, fetchFn });
+    await lauf({ stages: ["dev", "test"], nurLesen: true }, { ...env, gql, fetchFn });
+    expect(env.alarmFn).toHaveBeenCalledTimes(1);
+    expect(env.alarmFn.mock.calls[0][3]).toBe("board-status-job-dev");
   });
 
   it("unbekannte Stage wird abgelehnt", async () => {

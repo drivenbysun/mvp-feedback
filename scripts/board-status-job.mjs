@@ -33,6 +33,12 @@ export const KONFIG = {
   maxMovesProStage: 50,
   httpSekunden: 20,
   gesamtSekunden: 200,
+  // Board lesen: eine Seite braucht normal ~2 s; haengt gh einmal, hilft ein neuer Versuch mehr als ein langes Warten.
+  leseAufrufSekunden: 60,
+  leseVersuche: 2,
+  leseWartenMs: 3000,
+  // Alarm erst, wenn ein Stage so oft hintereinander fehlschlaegt (5-Minuten-Takt: ~15 Minuten).
+  alarmNachFehlern: 3,
   // Je Stage genau ein Uebergang (Ziel -> erforderlicher Ausgangsstatus); prod: keiner.
   // Die Auftraege stammen aus der Datenbank der App und gelten fuer den Job als nicht vertrauenswuerdig.
   erlaubteSpruenge: {
@@ -50,12 +56,25 @@ const Q_BOARD = `query($o:String!,$n:Int!,$c:String){ user(login:$o){ projectV2(
 const M_SET = `mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){ updateProjectV2ItemFieldValue(input:{projectId:$p,itemId:$i,fieldId:$f,value:{singleSelectOptionId:$o}}){ projectV2Item{ id } } }`;
 
 // ── Board lesen ──────────────────────────────────────────────────────────────
+async function seiteLesen(gql, vars, konfig) {
+  let letzter;
+  for (let v = 1; v <= konfig.leseVersuche; v++) {
+    try {
+      return await gql(Q_BOARD, vars, { aufrufSekunden: konfig.leseAufrufSekunden });
+    } catch (e) {
+      letzter = e;
+      if (v < konfig.leseVersuche && konfig.leseWartenMs) await new Promise((r) => setTimeout(r, konfig.leseWartenMs));
+    }
+  }
+  throw letzter;
+}
+
 export async function boardLesen(gql, konfig = KONFIG) {
   let projekt = null;
   const knoten = [];
   let cursor = null;
   for (let i = 0; i < konfig.maxItemSeiten; i++) {
-    const d = await gql(Q_BOARD, { o: konfig.eigentuemer, n: konfig.boardNummer, c: cursor });
+    const d = await seiteLesen(gql, { o: konfig.eigentuemer, n: konfig.boardNummer, c: cursor }, konfig);
     const p = d?.user?.projectV2;
     if (!p?.id) throw new Error(`Board ${konfig.boardNummer} nicht lesbar`);
     projekt ??= p;
@@ -279,15 +298,17 @@ export async function lauf(opt, deps = {}) {
         }
       }
     }
-    // Alarm nur beim Zustandswechsel, je Stage.
+    // Alarm je Stage: rot erst nach konfig.alarmNachFehlern Fehlschlaegen in Folge, gruen beim ersten Erfolg danach.
     const z = zustand.lesen();
     const vorher = z[stage] ?? "ok";
-    const jetzt = fehler ? "rot" : "ok";
+    const folge = { ...(z.folge ?? {}) };
+    folge[stage] = fehler ? (folge[stage] ?? 0) + 1 : 0;
+    const jetzt = fehler ? (folge[stage] >= konfig.alarmNachFehlern ? "rot" : vorher) : "ok";
     if (jetzt !== vorher) {
-      if (jetzt === "rot") await alarmFn("rot", `Board-Status-Job ${stage}: Fehler`, fehler, `board-status-job-${stage}`);
+      if (jetzt === "rot") await alarmFn("rot", `Board-Status-Job ${stage}: Fehler`, `${folge[stage]} Laeufe in Folge: ${fehler}`, `board-status-job-${stage}`);
       else await alarmFn("gruen", `Board-Status-Job ${stage}: wieder ok`, "Letzter Lauf ohne Fehler.", `board-status-job-${stage}`);
-      zustand.schreiben({ ...z, [stage]: jetzt });
     }
+    if (jetzt !== vorher || JSON.stringify(folge) !== JSON.stringify(z.folge ?? {})) zustand.schreiben({ ...z, [stage]: jetzt, folge });
     if (fehler) {
       console.error(`FEHLER ${fehler}`);
       ergebnisse[stage] = { ...ergebnisse[stage], fehler };
