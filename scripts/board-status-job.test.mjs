@@ -59,7 +59,7 @@ describe("boardLesen / fuerStage", () => {
     expect((await boardLesen(gql)).items.map((i) => i.number)).toEqual([1]);
   });
 
-  it("nimmt nur Karten mit app:magenta-os und liest ueber mehrere Seiten", async () => {
+  it("mit gesetztem Label nur markierte Karten, und liest ueber mehrere Seiten", async () => {
     const items = [
       knoten("a", 1, "Todo"),
       knoten("b", 2, "Review (DEV)", { labels: [{ name: "type:bug", color: "f00" }] }),
@@ -67,7 +67,7 @@ describe("boardLesen / fuerStage", () => {
       { id: "d", content: {}, status: null }, // Draft/PR ohne Issue-Inhalt
     ];
     const { gql } = boardAttrappe(items, { seiten: 2 });
-    const b = await boardLesen(gql);
+    const b = await boardLesen(gql, { ...KONFIG, label: "app:magenta-os" });
     expect(b.items.map((i) => i.number)).toEqual([1, 3]);
     expect(b.items[1].status).toBe("Done (PROD)");
     expect(b.optionen["Review (TEST)"]).toBe("opt-Review (TEST)");
@@ -422,12 +422,21 @@ describe("lauf", () => {
     expect(env.alarmFn.mock.calls[0][3]).toBe("board-status-job-dev");
   });
 
-  it("label: null liest alle Issues des Repos, mit Label nur die markierten", async () => {
-    const { gql } = boardAttrappe(items);
-    const alle = await boardLesen(gql, { ...SCHNELL, label: null });
-    const markiert = await boardLesen(gql, SCHNELL);
-    expect(alle.items.length).toBeGreaterThanOrEqual(markiert.items.length);
-    expect(alle.items.every((i) => typeof i.number === "number")).toBe(true);
+  it("Standard liest alle Issues des Repos (auch ohne Label); mit gesetztem Label nur die markierten", async () => {
+    const gemischt = [knoten("a", 1, "Todo"), knoten("b", 2, "Todo", { labels: [] }), knoten("c", 3, "Todo", { repo: "x/anders" })];
+    const { gql } = boardAttrappe(gemischt);
+    expect(KONFIG.label).toBeNull();
+    expect((await boardLesen(gql, KONFIG)).items.map((i) => i.number)).toEqual([1, 2]);
+    expect((await boardLesen(gql, { ...KONFIG, label: "app:magenta-os" })).items.map((i) => i.number)).toEqual([1]);
+  });
+
+  it("Done (PROD) aelter als doneTage geht nicht an die App, junges, offenes und solches ohne closedAt schon", () => {
+    const jetzt = Date.now();
+    const vor = (tage) => new Date(jetzt - tage * 86400000).toISOString();
+    const mk = (n, status, closedAt) => ({ itemId: `i${n}`, number: n, title: "t", url: `https://github.com/ss-cowork-engineer/magenta-os/issues/${n}`, status, labels: [], updatedAt: "", closedAt });
+    const r = fuerStage([mk(1, "Done (PROD)", vor(45)), mk(2, "Done (PROD)", vor(5)), mk(3, "Done (PROD)", null), mk(4, "Todo", vor(90))], KONFIG);
+    expect(r.items.map((i) => i.number)).toEqual([2, 3, 4]);
+    expect(r.zuAlt).toBe(1);
   });
 
   it("unbekannte Stage wird abgelehnt", async () => {

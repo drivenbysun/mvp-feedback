@@ -20,7 +20,11 @@ import { ghGraphql, alarm as alarmSenden } from "./board-einsortierer.mjs";
 export const KONFIG = {
   eigentuemer: "ss-cowork-engineer",
   boardNummer: 1,
-  label: "app:magenta-os",
+  // null = alle Issues des Repos auf Board 1 (Architect 04.10.); ein Wert = nur Issues mit diesem Label.
+  label: null,
+  // Done (PROD) nur senden, wenn das Issue so jung geschlossen wurde: die App zeigt daraus die PROD-Leiste
+  // (firstSeenAt = erster Push) -- alte Karten wuerden dort als "gerade live" erscheinen (MAGENTA-OS 04.10.).
+  doneTage: 30,
   repo: "ss-cowork-engineer/magenta-os",
   stages: {
     dev: "https://magenta-os-dev.mhub.one",
@@ -53,7 +57,7 @@ export const KONFIG = {
 const Q_BOARD = `query($o:String!,$n:Int!,$c:String){ user(login:$o){ projectV2(number:$n){ id
   field(name:"Status"){ ... on ProjectV2SingleSelectField { id options{ id name } } }
   items(first:100, after:$c){ pageInfo{ hasNextPage endCursor } nodes{ id
-    content{ ... on Issue{ number title body url state updatedAt repository{ nameWithOwner } labels(first:30){ nodes{ name color } } } }
+    content{ ... on Issue{ number title body url state closedAt updatedAt repository{ nameWithOwner } labels(first:30){ nodes{ name color } } } }
     status: fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue{ name } } } } } } }`;
 const M_SET = `mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){ updateProjectV2ItemFieldValue(input:{projectId:$p,itemId:$i,fieldId:$f,value:{singleSelectOptionId:$o}}){ projectV2Item{ id } } }`;
 
@@ -91,7 +95,7 @@ export async function boardLesen(gql, konfig = KONFIG) {
         if (!c?.number || c.repository?.nameWithOwner !== konfig.repo || (konfig.label && !labels.some((l) => l.name === konfig.label))) continue;
         items.push({
           itemId: k.id, number: c.number, title: c.title, body: c.body ?? "", url: c.url, status: k.status?.name ?? null,
-          labels, updatedAt: c.updatedAt ?? "",
+          labels, updatedAt: c.updatedAt ?? "", closedAt: c.closedAt ?? null,
         });
       }
       return {
@@ -131,7 +135,14 @@ export function fuerStage(items, konfig = KONFIG) {
   const gueltig = [];
   const gesehen = new Set();
   let verworfen = 0;
+  const doneGrenze = Date.now() - konfig.doneTage * 86400000;
+  let zuAlt = 0;
   for (const it of items) {
+    // Altes Done (PROD) bleibt auf dem Board, geht aber nicht an die App. Ohne closedAt (z. B. wieder geoeffnet): senden.
+    if (it.status === "Done (PROD)" && it.closedAt && Date.parse(it.closedAt) < doneGrenze) {
+      zuAlt++;
+      continue;
+    }
     const k = itemFuerApp(it, konfig);
     if (k && !gesehen.has(k.number)) {
       gesehen.add(k.number);
@@ -139,11 +150,11 @@ export function fuerStage(items, konfig = KONFIG) {
     } else verworfen++;
   }
   const ohneZeit = ({ updatedAt, ...rest }) => rest;
-  if (gueltig.length <= konfig.maxItems) return { items: gueltig.map(ohneZeit), gekappt: 0, verworfen };
+  if (gueltig.length <= konfig.maxItems) return { items: gueltig.map(ohneZeit), gekappt: 0, verworfen, zuAlt };
   const rang = (it) => (it.status === "Done (PROD)" ? 0 : 1);
   const sortiert = [...gueltig].sort((a, b) => rang(b) - rang(a) || b.updatedAt.localeCompare(a.updatedAt));
   const behalten = sortiert.slice(0, konfig.maxItems);
-  return { items: behalten.map(ohneZeit), gekappt: gueltig.length - behalten.length, verworfen };
+  return { items: behalten.map(ohneZeit), gekappt: gueltig.length - behalten.length, verworfen, zuAlt };
 }
 
 // ── HTTP gegen eine Stage ────────────────────────────────────────────────────
@@ -167,10 +178,10 @@ export async function stageAufruf(fetchFn, basis, pfad, methode, schluessel, bod
 
 // ── Lesen: Stand an eine Stage schieben ──────────────────────────────────────
 export async function standSenden(fetchFn, stage, basis, schluessel, board, konfig = KONFIG) {
-  const { items, gekappt, verworfen } = fuerStage(board.items, konfig);
+  const { items, gekappt, verworfen, zuAlt } = fuerStage(board.items, konfig);
   const r = await stageAufruf(fetchFn, basis, "/api/board-status", "PUT", schluessel, { generatedAt: new Date().toISOString(), items }, konfig);
   // 409: die Stage hat einen neueren Stand -- kein Fehler, nichts zurueckdrehen.
-  if (r.status === 200 || r.status === 409) return { ok: true, status: r.status, anzahl: items.length, gekappt, verworfen };
+  if (r.status === 200 || r.status === 409) return { ok: true, status: r.status, anzahl: items.length, gekappt, verworfen, zuAlt };
   const hinweis = { 401: "Schluessel falsch", 503: "Schluessel auf der Stage nicht gesetzt", 404: "Endpunkt fehlt", 400: "Schema abgelehnt" }[r.status] ?? "unerwartet";
   return { ok: false, status: r.status, fehler: `${stage}: PUT /api/board-status -> ${r.status} (${hinweis})` };
 }
@@ -288,7 +299,7 @@ export async function lauf(opt, deps = {}) {
             const r = await standSenden(fetchFn, stage, basis, key, board, konfig);
             ergebnisse[stage] = { ...ergebnisse[stage], lesen: r };
             if (!r.ok) teile.push(r.fehler);
-            else log(`${stage}: ${r.anzahl} Karten gesendet (${r.status})${r.gekappt ? `, ${r.gekappt} wegen Obergrenze weggelassen` : ""}${r.verworfen ? `, ${r.verworfen} mit ungueltiger Form ausgelassen` : ""}`);
+            else log(`${stage}: ${r.anzahl} Karten gesendet (${r.status})${r.gekappt ? `, ${r.gekappt} wegen Obergrenze weggelassen` : ""}${r.verworfen ? `, ${r.verworfen} mit ungueltiger Form ausgelassen` : ""}${r.zuAlt ? `, ${r.zuAlt} alte Done (PROD) ausgelassen` : ""}`);
           }
           if (!opt.nurLesen) {
             const r = await schreibenFuerStage(fetchFn, gql, stage, basis, key, board, konfig);
