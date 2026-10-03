@@ -422,6 +422,14 @@ describe("lauf", () => {
     expect(env.alarmFn.mock.calls[0][3]).toBe("board-status-job-dev");
   });
 
+  it("label: null liest alle Issues des Repos, mit Label nur die markierten", async () => {
+    const { gql } = boardAttrappe(items);
+    const alle = await boardLesen(gql, { ...SCHNELL, label: null });
+    const markiert = await boardLesen(gql, SCHNELL);
+    expect(alle.items.length).toBeGreaterThanOrEqual(markiert.items.length);
+    expect(alle.items.every((i) => typeof i.number === "number")).toBe(true);
+  });
+
   it("unbekannte Stage wird abgelehnt", async () => {
     await expect(lauf({ stages: ["staging"] }, umgebung())).rejects.toThrow(/unbekannte Stage/);
   });

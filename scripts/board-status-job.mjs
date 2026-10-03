@@ -88,7 +88,7 @@ export async function boardLesen(gql, konfig = KONFIG) {
       for (const k of knoten) {
         const c = k.content;
         const labels = (c?.labels?.nodes ?? []).map((l) => ({ name: l.name, color: l.color }));
-        if (!c?.number || c.repository?.nameWithOwner !== konfig.repo || !labels.some((l) => l.name === konfig.label)) continue;
+        if (!c?.number || c.repository?.nameWithOwner !== konfig.repo || (konfig.label && !labels.some((l) => l.name === konfig.label))) continue;
         items.push({
           itemId: k.id, number: c.number, title: c.title, body: c.body ?? "", url: c.url, status: k.status?.name ?? null,
           labels, updatedAt: c.updatedAt ?? "",
@@ -186,7 +186,7 @@ export async function moveAusfuehren(gql, board, move, stage, konfig = KONFIG) {
   const erlaubterStart = erlaubt[ziel];
   if (move.fromStatus !== undefined && move.fromStatus !== erlaubterStart) return { ok: false, error: "status changed" };
   const item = board.items.find((i) => i.number === nummer);
-  if (!item) return { ok: false, error: `Karte #${nummer} nicht auf Board 1 mit ${konfig.label} in ${konfig.repo}` };
+  if (!item) return { ok: false, error: `Karte #${nummer} nicht auf Board 1 in ${konfig.repo}${konfig.label ? ` mit ${konfig.label}` : ""}` };
   if (item.status === ziel) return { ok: true, schonDa: true }; // idempotent
   if (item.status !== erlaubterStart) return { ok: false, error: "status changed" };
   await gql(M_SET, { p: board.projectId, i: item.itemId, f: board.statusFeldId, o: board.optionen[ziel] });
@@ -265,7 +265,7 @@ export async function lauf(opt, deps = {}) {
   let boardFehler = null;
   try {
     board = await boardLesen(gql, konfig);
-    log(`Board 1: ${board.items.length} Karten mit ${konfig.label}`);
+    log(`Board 1: ${board.items.length} Karten${konfig.label ? ` mit ${konfig.label}` : ""}`);
   } catch (e) {
     boardFehler = `Board lesen: ${String(e.message ?? e).slice(0, 200)}`;
   }
