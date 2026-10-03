@@ -22,9 +22,9 @@ export const KONFIG = {
   boardNummer: 1,
   // null = alle Issues des Repos auf Board 1 (Architect 04.10.); ein Wert = nur Issues mit diesem Label.
   label: null,
-  // Done (PROD) nur senden, wenn das Issue so jung geschlossen wurde: die App zeigt daraus die PROD-Leiste
+  // Done (PROD) nur senden, wenn das Issue so jung geschlossen wurde (7 = Fenster der PROD-Leiste): die App zeigt daraus die PROD-Leiste
   // (firstSeenAt = erster Push) -- alte Karten wuerden dort als "gerade live" erscheinen (MAGENTA-OS 04.10.).
-  doneTage: 30,
+  doneTage: 7,
   repo: "ss-cowork-engineer/magenta-os",
   stages: {
     dev: "https://magenta-os-dev.mhub.one",
