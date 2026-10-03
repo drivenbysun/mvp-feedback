@@ -261,7 +261,7 @@ export function schluesselLesen(stage, konfig = KONFIG) {
 export async function lauf(opt, deps = {}) {
   const {
     gql = ghGraphql, fetchFn = fetch, konfig = KONFIG, alarmFn = alarmSenden, zustand = zustandDatei,
-    schluessel = (s) => schluesselLesen(s, konfig), log = console.log,
+    schluessel = (s) => schluesselLesen(s, konfig), log = console.log, logFehler = console.error,
   } = deps;
   const stages = opt.stages ?? [];
   if (!stages.length) {
@@ -325,7 +325,7 @@ export async function lauf(opt, deps = {}) {
     }
     if (jetzt !== vorher || JSON.stringify(folge) !== JSON.stringify(z.folge ?? {})) zustand.schreiben({ ...z, [stage]: jetzt, folge });
     if (fehler) {
-      console.error(`FEHLER ${fehler}`);
+      logFehler(`FEHLER ${stage}: ${fehler}`);
       ergebnisse[stage] = { ...ergebnisse[stage], fehler };
     }
   }
@@ -350,17 +350,18 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   } catch {
     /* kein Log, nichts zu tun */
   }
+  const mitZeit = (f) => (m) => f(`${new Date().toISOString()} ${m}`);
   const wachhund = setTimeout(() => {
-    console.error("FEHLER: Laufzeit-Obergrenze, Prozess wird beendet");
+    mitZeit(console.error)("FEHLER: Laufzeit-Obergrenze, Prozess wird beendet");
     process.exit(2);
   }, (KONFIG.gesamtSekunden + 60) * 1000);
-  lauf(opt)
+  lauf(opt, { log: mitZeit(console.log), logFehler: mitZeit(console.error) })
     .then((r) => {
       clearTimeout(wachhund);
       process.exit(r.exit);
     })
     .catch((e) => {
-      console.error(String(e.message ?? e));
+      mitZeit(console.error)(String(e.message ?? e));
       process.exit(1);
     });
 }
