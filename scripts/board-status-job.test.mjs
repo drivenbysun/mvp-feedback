@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { KONFIG, boardLesen, fuerStage, lauf, moveAusfuehren } from "./board-status-job.mjs";
+import { KONFIG, boardLesen, fuerStage, lauf, moveAusfuehren, standSenden } from "./board-status-job.mjs";
 
 // WICHTIG: Attrappen, keine echten Stages. Die HTTP-Formen folgen magenta-os #1976 (Entwurf);
 // sobald DEV die Endpunkte hat, muss ein Lauf gegen DEV diese Annahmen bestaetigen.
@@ -437,6 +437,30 @@ describe("lauf", () => {
     const r = fuerStage([mk(1, "Done (PROD)", vor(45)), mk(2, "Done (PROD)", vor(5)), mk(3, "Done (PROD)", null), mk(4, "Todo", vor(90))], KONFIG);
     expect(r.items.map((i) => i.number)).toEqual([2, 3, 4]);
     expect(r.zuAlt).toBe(1);
+  });
+
+  it("closedAt geht nur mit mitClosedAt mit, nur im Format ISO-8601 UTC mit Z (sonst weggelassen)", () => {
+    const mk = (n, closedAt) => ({ itemId: `i${n}`, number: n, title: "t", url: `https://github.com/ss-cowork-engineer/magenta-os/issues/${n}`, status: "Done (PROD)", labels: [], updatedAt: "", closedAt });
+    const board = [mk(1, "2026-10-04T20:00:00Z"), mk(2, "2026-10-04T20:00:00.123Z"), mk(3, "2026-10-04T22:00:00+02:00"), mk(4, "2026"), mk(5, null)];
+    const mit = fuerStage(board, { ...KONFIG, doneTage: 3650 }, true).items;
+    expect(mit.map((i) => i.closedAt)).toEqual(["2026-10-04T20:00:00Z", "2026-10-04T20:00:00.123Z", undefined, undefined, undefined]);
+    expect("closedAt" in mit[2]).toBe(false);
+    const ohne = fuerStage(board, { ...KONFIG, doneTage: 3650 }, false).items;
+    expect(ohne.some((i) => "closedAt" in i)).toBe(false);
+  });
+
+  it("standSenden schickt closedAt nur an Stages aus closedAtStages (Standard: nur dev)", async () => {
+    expect(KONFIG.closedAtStages).toEqual(["dev"]);
+    const board = { items: [{ itemId: "i1", number: 1, title: "t", url: "https://github.com/ss-cowork-engineer/magenta-os/issues/1", status: "Done (PROD)", labels: [], updatedAt: "", closedAt: new Date().toISOString().replace(/\.\d+Z$/, "Z") }] };
+    const gesendet = {};
+    const fetchFn = async (url, opt) => {
+      gesendet[url] = JSON.parse(opt.body);
+      return { status: 200, json: async () => ({}) };
+    };
+    await standSenden(fetchFn, "dev", "http://dev", "k", board, KONFIG);
+    await standSenden(fetchFn, "test", "http://test", "k", board, KONFIG);
+    expect(gesendet["http://dev/api/board-status"].items[0].closedAt).toBe(board.items[0].closedAt);
+    expect("closedAt" in gesendet["http://test/api/board-status"].items[0]).toBe(false);
   });
 
   it("unbekannte Stage wird abgelehnt", async () => {

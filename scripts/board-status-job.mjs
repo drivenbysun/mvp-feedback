@@ -32,6 +32,8 @@ export const KONFIG = {
     prod: "https://magenta-os.mhub.one",
   },
   schluesselDatei: (stage) => join(homedir(), `.fabrik/keys/board-status-key-${stage}.txt`),
+  // Stages, deren App `closedAt` je Item schon annimmt (MAGENTA c828371b, DEV 05.10.). Auf den anderen wuerde ein unbekanntes Feld ggf. den ganzen Sync mit 400 abweisen.
+  closedAtStages: ["dev"],
   maxItems: 2000,
   maxItemSeiten: 30,
   maxMovesProStage: 50,
@@ -131,7 +133,7 @@ export function itemFuerApp(it, konfig = KONFIG) {
 }
 
 // Obergrenze der App: 2000 Items. Erledigtes faellt zuerst raus, dann das Aelteste.
-export function fuerStage(items, konfig = KONFIG) {
+export function fuerStage(items, konfig = KONFIG, mitClosedAt = false) {
   const gueltig = [];
   const gesehen = new Set();
   let verworfen = 0;
@@ -146,6 +148,8 @@ export function fuerStage(items, konfig = KONFIG) {
     const k = itemFuerApp(it, konfig);
     if (k && !gesehen.has(k.number)) {
       gesehen.add(k.number);
+      // App verlangt ISO-8601 UTC mit Z; alles andere liesse den ganzen Sync mit 400 scheitern -> dann weglassen.
+      if (mitClosedAt && typeof it.closedAt === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(it.closedAt)) k.closedAt = it.closedAt;
       gueltig.push({ ...k, updatedAt: it.updatedAt ?? "" });
     } else verworfen++;
   }
@@ -178,7 +182,7 @@ export async function stageAufruf(fetchFn, basis, pfad, methode, schluessel, bod
 
 // ── Lesen: Stand an eine Stage schieben ──────────────────────────────────────
 export async function standSenden(fetchFn, stage, basis, schluessel, board, konfig = KONFIG) {
-  const { items, gekappt, verworfen, zuAlt } = fuerStage(board.items, konfig);
+  const { items, gekappt, verworfen, zuAlt } = fuerStage(board.items, konfig, (konfig.closedAtStages ?? []).includes(stage));
   const r = await stageAufruf(fetchFn, basis, "/api/board-status", "PUT", schluessel, { generatedAt: new Date().toISOString(), items }, konfig);
   // 409: die Stage hat einen neueren Stand -- kein Fehler, nichts zurueckdrehen.
   if (r.status === 200 || r.status === 409) return { ok: true, status: r.status, anzahl: items.length, gekappt, verworfen, zuAlt };
