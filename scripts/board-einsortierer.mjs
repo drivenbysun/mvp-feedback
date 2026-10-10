@@ -37,6 +37,13 @@ export const KONFIG = {
   maxItemSeiten: 30,
   gesamtSekunden: 240,
   aufrufSekunden: 30,
+  // GitHub antwortet gelegentlich mit 502/504, leerem Body oder gar nicht (Zeitlimit).
+  // Solche Aufrufe werden wiederholt, insgesamt hoechstens so oft je Lauf (haelt die Laufzeit-Obergrenze ein).
+  wiederholungenProLauf: 4,
+  wiederholungPausenSekunden: [3, 10],
+  // Alarm erst nach so vielen fehlgeschlagenen Laeufen in Folge (gelb), rot, wenn es sich nicht selbst heilt.
+  gelbAbFolge: 3,
+  rotAbFolge: 6,
 };
 
 const AUSLASTUNGS_SCHUTZ = "board-einsortierer";
@@ -228,17 +235,35 @@ export function alarm(schwere, titel, text, schluessel = AUSLASTUNGS_SCHUTZ) {
   });
 }
 
+// Wiederholt voruebergehende gh-Fehler. GraphQL-Fehlerobjekte (kaputte Abfrage) sind kein Netzproblem.
+export function mitWiederholung(gql, konfig = KONFIG, pause = (ms) => new Promise((r) => setTimeout(r, ms))) {
+  let uebrig = konfig.wiederholungenProLauf;
+  return async (...args) => {
+    for (let versuch = 0; ; versuch++) {
+      try {
+        return await gql(...args);
+      } catch (e) {
+        if (uebrig <= 0 || /^GraphQL:/.test(String(e.message ?? e))) throw e;
+        uebrig--;
+        const pausen = konfig.wiederholungPausenSekunden;
+        await pause(pausen[Math.min(versuch, pausen.length - 1)] * 1000);
+      }
+    }
+  };
+}
+
 const ZUSTAND = join(homedir(), ".fabrik/zustand/board-einsortierer.json");
 function zustandLesen() {
   try {
-    return JSON.parse(readFileSync(ZUSTAND, "utf8")).zustand;
+    const j = JSON.parse(readFileSync(ZUSTAND, "utf8"));
+    return { zustand: j.zustand ?? "ok", folge: Number.isInteger(j.folge) ? j.folge : 0 };
   } catch {
-    return "ok";
+    return { zustand: "ok", folge: 0 };
   }
 }
-function zustandSchreiben(z) {
+function zustandSchreiben({ zustand, folge }) {
   mkdirSync(dirname(ZUSTAND), { recursive: true });
-  writeFileSync(ZUSTAND, JSON.stringify({ zustand: z, zeit: new Date().toISOString() }));
+  writeFileSync(ZUSTAND, JSON.stringify({ zustand, folge, zeit: new Date().toISOString() }));
 }
 
 // ── Lauf ─────────────────────────────────────────────────────────────────────
@@ -257,7 +282,11 @@ export function bericht(plan, ergebnis) {
   return z.join("\n");
 }
 
-export async function lauf({ scharf, json }, { gql = ghGraphql, konfig = KONFIG, alarmFn = alarm, zustand = { lesen: zustandLesen, schreiben: zustandSchreiben } } = {}) {
+export async function lauf(
+  { scharf, json },
+  { gql: gqlRoh = ghGraphql, konfig = KONFIG, alarmFn = alarm, zustand = { lesen: zustandLesen, schreiben: zustandSchreiben }, pause } = {},
+) {
+  const gql = mitWiederholung(gqlRoh, konfig, pause);
   let plan = null;
   let ergebnis = null;
   let fehlerText = null;
@@ -281,13 +310,22 @@ export async function lauf({ scharf, json }, { gql = ghGraphql, konfig = KONFIG,
   }
 
   // Nur der scharfe Lauf alarmiert und fuehrt den Zustand; der Trockenlauf meldet nur.
+  // Ein einzelner Fehlschlag heilt sich meist selbst (GitHub 502/504): erst nach gelbAbFolge Laeufen in Folge
+  // wird alarmiert (gelb), nach rotAbFolge rot. Ein Lauf ohne Fehler setzt den Zaehler zurueck.
   if (scharf) {
+    const vorher = zustand.lesen();
     if (fehlerText) {
-      await alarmFn("rot", "Board-Einsortierer: Fehler", fehlerText);
-      zustand.schreiben("rot");
-    } else if (zustand.lesen() === "rot") {
-      await alarmFn("gruen", "Board-Einsortierer: wieder ok", "Letzter Lauf ohne Fehler.");
-      zustand.schreiben("ok");
+      const folge = (vorher.folge ?? 0) + 1;
+      let stufe = "ok";
+      if (folge >= konfig.rotAbFolge) stufe = "rot";
+      else if (folge >= konfig.gelbAbFolge) stufe = "gelb";
+      if (stufe !== "ok") await alarmFn(stufe, "Board-Einsortierer: Fehler", `${folge} Laeufe in Folge fehlgeschlagen: ${fehlerText}`);
+      zustand.schreiben({ zustand: stufe, folge });
+    } else {
+      if (vorher.zustand === "gelb" || vorher.zustand === "rot") {
+        await alarmFn("gruen", "Board-Einsortierer: wieder ok", "Letzter Lauf ohne Fehler.");
+      }
+      if (vorher.zustand !== "ok" || vorher.folge) zustand.schreiben({ zustand: "ok", folge: 0 });
     }
   }
   return { plan, ergebnis, fehler: fehlerText, exit: fehlerText ? 1 : 0 };

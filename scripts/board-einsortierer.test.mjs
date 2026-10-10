@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { KONFIG, ausfuehren, boardSchluesselFuer, lauf, planen } from "./board-einsortierer.mjs";
+import { KONFIG, ausfuehren, boardSchluesselFuer, lauf, mitWiederholung, planen } from "./board-einsortierer.mjs";
 
 // Attrappe der GitHub-GraphQL-Schnittstelle. Merkt sich jede Schreib-Mutation.
 function attrappe({ spalteBoard1 = false, issues, failSet = false, failDelete = false, boardItems = {} } = {}) {
@@ -202,6 +202,38 @@ describe("ausfuehren (schreiben)", () => {
   });
 });
 
+describe("mitWiederholung", () => {
+  const ohnePause = async () => {};
+
+  it("wiederholt einen leeren Body (gh: unexpected end of JSON input) und liefert dann das Ergebnis", async () => {
+    const roh = vi.fn().mockRejectedValueOnce(new Error("gh Exit 1: unexpected end of JSON input")).mockResolvedValueOnce({ ok: 1 });
+    const pause = vi.fn(ohnePause);
+    expect(await mitWiederholung(roh, KONFIG, pause)({ q: 1 })).toEqual({ ok: 1 });
+    expect(roh).toHaveBeenCalledTimes(2);
+    expect(pause).toHaveBeenCalledWith(3000);
+  });
+
+  it("wiederholt 502, 504 und Zeitlimit, gibt aber nach der Obergrenze je Lauf auf", async () => {
+    const roh = vi.fn(async () => {
+      throw new Error("gh Exit 1: HTTP 504");
+    });
+    const gql = mitWiederholung(roh, { ...KONFIG, wiederholungenProLauf: 2 }, ohnePause);
+    await expect(gql()).rejects.toThrow("504");
+    expect(roh).toHaveBeenCalledTimes(3);
+    // Die Obergrenze gilt fuer den ganzen Lauf, nicht je Aufruf.
+    await expect(gql()).rejects.toThrow("504");
+    expect(roh).toHaveBeenCalledTimes(4);
+  });
+
+  it("wiederholt GraphQL-Fehlerobjekte nicht (kaputte Abfrage ist kein Netzproblem)", async () => {
+    const roh = vi.fn(async () => {
+      throw new Error("GraphQL: [{...}]");
+    });
+    await expect(mitWiederholung(roh, KONFIG, ohnePause)()).rejects.toThrow("GraphQL");
+    expect(roh).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("lauf (Alarm)", () => {
   const stumm = () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -211,53 +243,129 @@ describe("lauf (Alarm)", () => {
       err.mockRestore();
     };
   };
+  const pause = async () => {};
+  const zustandMit = (zustand = "ok", folge = 0) => ({ lesen: () => ({ zustand, folge }), schreiben: vi.fn() });
+  const kaputt = (text = "gh Exit 1: unexpected end of JSON input") =>
+    vi.fn(async () => {
+      throw new Error(text);
+    });
 
   it("Trockenlauf schreibt nichts und alarmiert nicht", async () => {
     const { gql, schreib } = attrappe({ spalteBoard1: true });
     const alarmFn = vi.fn();
-    const z = { lesen: () => "ok", schreiben: vi.fn() };
+    const z = zustandMit();
     const aus = stumm();
-    const r = await lauf({ scharf: false, json: false }, { gql, alarmFn, zustand: z });
+    const r = await lauf({ scharf: false, json: false }, { gql, alarmFn, zustand: z, pause });
     aus();
     expect(schreib).toEqual([]);
     expect(alarmFn).not.toHaveBeenCalled();
+    expect(z.schreiben).not.toHaveBeenCalled();
     expect(r.exit).toBe(0);
   });
 
-  it("scharfer Lauf mit Fehler alarmiert rot (nicht nur Logdatei)", async () => {
-    const { gql } = attrappe({ failSet: true });
+  it("einzelner Fehlschlag (leeres JSON) alarmiert NICHT, zaehlt aber mit", async () => {
     const alarmFn = vi.fn();
-    const z = { lesen: () => "ok", schreiben: vi.fn() };
+    const z = zustandMit("ok", 0);
     const aus = stumm();
-    const r = await lauf({ scharf: true, json: false }, { gql, alarmFn, zustand: z });
+    const r = await lauf({ scharf: true, json: false }, { gql: kaputt(), alarmFn, zustand: z, pause });
     aus();
     expect(r.exit).toBe(1);
-    expect(alarmFn).toHaveBeenCalledWith("rot", expect.any(String), expect.stringContaining("staffhub#1"));
-    expect(z.schreiben).toHaveBeenCalledWith("rot");
+    expect(alarmFn).not.toHaveBeenCalled();
+    expect(z.schreiben).toHaveBeenCalledWith({ zustand: "ok", folge: 1 });
   });
 
-  it("Lesefehler (z. B. gh nicht angemeldet) alarmiert ebenfalls", async () => {
-    const gql = vi.fn(async () => {
-      throw new Error("gh Exit 4: auth");
+  it("zweiter Fehlschlag in Folge alarmiert ebenfalls noch nicht", async () => {
+    const alarmFn = vi.fn();
+    const z = zustandMit("ok", 1);
+    const aus = stumm();
+    await lauf({ scharf: true, json: false }, { gql: kaputt(), alarmFn, zustand: z, pause });
+    aus();
+    expect(alarmFn).not.toHaveBeenCalled();
+    expect(z.schreiben).toHaveBeenCalledWith({ zustand: "ok", folge: 2 });
+  });
+
+  it("dritter Fehlschlag in Folge alarmiert gelb, nicht rot", async () => {
+    const alarmFn = vi.fn();
+    const z = zustandMit("ok", 2);
+    const aus = stumm();
+    await lauf({ scharf: true, json: false }, { gql: kaputt(), alarmFn, zustand: z, pause });
+    aus();
+    expect(alarmFn).toHaveBeenCalledWith("gelb", expect.any(String), expect.stringContaining("unexpected end of JSON input"));
+    expect(z.schreiben).toHaveBeenCalledWith({ zustand: "gelb", folge: 3 });
+  });
+
+  it("heilt es sich nicht, wird es nach sechs Laeufen in Folge rot", async () => {
+    const alarmFn = vi.fn();
+    const z = zustandMit("gelb", 5);
+    const aus = stumm();
+    await lauf({ scharf: true, json: false }, { gql: kaputt("gh Exit 4: auth"), alarmFn, zustand: z, pause });
+    aus();
+    expect(alarmFn).toHaveBeenCalledWith("rot", expect.any(String), expect.stringContaining("gh Exit 4"));
+    expect(z.schreiben).toHaveBeenCalledWith({ zustand: "rot", folge: 6 });
+  });
+
+  it("ein einmaliger leerer Body mitten im Lauf wird wiederholt und ist gar kein Fehler", async () => {
+    const { gql: echt } = attrappe({ spalteBoard1: true });
+    let erster = true;
+    const gql = vi.fn(async (...a) => {
+      if (erster) {
+        erster = false;
+        throw new Error("gh Exit 1: unexpected end of JSON input");
+      }
+      return echt(...a);
     });
     const alarmFn = vi.fn();
-    const z = { lesen: () => "ok", schreiben: vi.fn() };
+    const z = zustandMit("ok", 2);
     const aus = stumm();
-    const r = await lauf({ scharf: true, json: false }, { gql, alarmFn, zustand: z });
-    aus();
-    expect(r.exit).toBe(1);
-    expect(alarmFn).toHaveBeenCalledWith("rot", expect.any(String), expect.stringContaining("gh Exit 4"));
-  });
-
-  it("schliesst den Alarm mit gruen, wenn es nach einem Fehler wieder laeuft", async () => {
-    const { gql } = attrappe({ spalteBoard1: true });
-    const alarmFn = vi.fn();
-    const z = { lesen: () => "rot", schreiben: vi.fn() };
-    const aus = stumm();
-    const r = await lauf({ scharf: true, json: false }, { gql, alarmFn, zustand: z });
+    const r = await lauf({ scharf: true, json: false }, { gql, alarmFn, zustand: z, pause });
     aus();
     expect(r.exit).toBe(0);
-    expect(alarmFn).toHaveBeenCalledWith("gruen", expect.any(String), expect.any(String));
-    expect(z.schreiben).toHaveBeenCalledWith("ok");
+    expect(alarmFn).not.toHaveBeenCalled();
+    expect(z.schreiben).toHaveBeenCalledWith({ zustand: "ok", folge: 0 });
+  });
+
+  it("Fehler beim Einsortieren eines Issues zaehlt wie jeder Fehlschlag (kein sofortiges Rot mehr)", async () => {
+    const { gql } = attrappe({ failSet: true });
+    const alarmFn = vi.fn();
+    const z = zustandMit("ok", 2);
+    const aus = stumm();
+    const r = await lauf({ scharf: true, json: false }, { gql, alarmFn, zustand: z, pause });
+    aus();
+    expect(r.exit).toBe(1);
+    expect(alarmFn).toHaveBeenCalledWith("gelb", expect.any(String), expect.stringContaining("staffhub#1"));
+  });
+
+  it("schliesst den Alarm mit gruen, wenn es nach gelb oder rot wieder laeuft", async () => {
+    for (const stufe of ["gelb", "rot"]) {
+      const { gql } = attrappe({ spalteBoard1: true });
+      const alarmFn = vi.fn();
+      const z = zustandMit(stufe, 7);
+      const aus = stumm();
+      const r = await lauf({ scharf: true, json: false }, { gql, alarmFn, zustand: z, pause });
+      aus();
+      expect(r.exit).toBe(0);
+      expect(alarmFn).toHaveBeenCalledWith("gruen", expect.any(String), expect.any(String));
+      expect(z.schreiben).toHaveBeenCalledWith({ zustand: "ok", folge: 0 });
+    }
+  });
+
+  it("gruen ohne vorherigen Alarm gibt es nicht (nach 1-2 stillen Fehlschlaegen nur Zaehler zurueck)", async () => {
+    const { gql } = attrappe({ spalteBoard1: true });
+    const alarmFn = vi.fn();
+    const z = zustandMit("ok", 2);
+    const aus = stumm();
+    await lauf({ scharf: true, json: false }, { gql, alarmFn, zustand: z, pause });
+    aus();
+    expect(alarmFn).not.toHaveBeenCalled();
+    expect(z.schreiben).toHaveBeenCalledWith({ zustand: "ok", folge: 0 });
+  });
+
+  it("unauffaelliger Lauf schreibt keinen Zustand", async () => {
+    const { gql } = attrappe({ spalteBoard1: true });
+    const z = zustandMit("ok", 0);
+    const aus = stumm();
+    await lauf({ scharf: true, json: false }, { gql, alarmFn: vi.fn(), zustand: z, pause });
+    aus();
+    expect(z.schreiben).not.toHaveBeenCalled();
   });
 });
