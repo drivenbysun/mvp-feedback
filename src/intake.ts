@@ -1,5 +1,6 @@
 import type { CreateBoardIssueInput, FeedbackConfig, StoreAttachment, IntakeAttachment, IntakeInput, IntakeResult, IntakeTarget } from "./config";
 import { pruefeRateLimit } from "./rate-limit";
+import { einmalProSchluessel } from "./idempotency";
 
 const DEFAULT_ATTACHMENT_TAG = "feedback-attachments";
 export const DEFAULT_COLUMN_NAME = "User Request";
@@ -269,6 +270,10 @@ export async function createBoardIssue(input: CreateBoardIssueInput): Promise<In
 }
 
 export async function submitFeedback(config: FeedbackConfig, input: IntakeInput): Promise<IntakeResult> {
+  return einmalProSchluessel(input.idempotencyKey?.trim() || undefined, () => submitFeedbackOnce(config, input));
+}
+
+async function submitFeedbackOnce(config: FeedbackConfig, input: IntakeInput): Promise<IntakeResult> {
   const token = config.token ?? process.env[config.tokenEnv ?? "GH_PROJECT_TOKEN"];
   if (!token) return { ok: false, error: "no token configured" };
 

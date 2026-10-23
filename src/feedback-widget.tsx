@@ -17,6 +17,13 @@ function fehlertext(code: string | undefined): string {
   return "Konnte nicht gesendet werden. Bitte später erneut versuchen.";
 }
 
+// Schluessel je Absendung. crypto.randomUUID gibt es nur in sicheren Kontexten
+// (https/localhost) -- Fallback, damit das Widget auch auf http nicht bricht.
+function neuerSchluessel(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
 // Self-styled (Inline-Styles) → keine CSS-Abhängigkeit, läuft in jedem Projekt.
 // Der Consumer reicht die Server-Action rein (bekommt FormData: kind, text).
 export interface FeedbackWidgetProps {
@@ -131,6 +138,11 @@ export function FeedbackWidget({
   const [screenshotCanvas, setScreenshotCanvas] = useState<HTMLCanvasElement | null>(null);
   const [capturing, setCapturing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [sending, setSending] = useState(false);
+  // Ref statt State: gilt sofort, auch fuer einen zweiten Submit im selben Tick.
+  const sendeSperre = useRef(false);
+  // Bleibt bei Fehlern gleich (Wiederholen = dieselbe Absendung), neu nach Erfolg.
+  const schluessel = useRef<string | null>(null);
 
   async function screenshotErfassen() {
     setCapturing(true);
@@ -250,14 +262,27 @@ export function FeedbackWidget({
             ) : (
               <form
                 action={async (fd) => {
+                  if (sendeSperre.current) return;
+                  sendeSperre.current = true;
+                  setSending(true);
                   setError(null);
-                  const ergebnis = await action(fd);
-                  if (istFehlgeschlagenesErgebnis(ergebnis)) {
-                    setError(fehlertext(ergebnis.error));
-                    return;
+                  schluessel.current ??= neuerSchluessel();
+                  fd.set("idempotencyKey", schluessel.current);
+                  try {
+                    const ergebnis = await action(fd);
+                    if (istFehlgeschlagenesErgebnis(ergebnis)) {
+                      setError(fehlertext(ergebnis.error));
+                      return;
+                    }
+                    schluessel.current = null;
+                    setFileNames([]);
+                    setSent(true);
+                  } catch {
+                    setError(fehlertext(undefined));
+                  } finally {
+                    sendeSperre.current = false;
+                    setSending(false);
                   }
-                  setFileNames([]);
-                  setSent(true);
                 }}
               >
                 <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Feedback geben</div>
@@ -334,8 +359,8 @@ export function FeedbackWidget({
                   <button type="button" onClick={schliessen} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #2e333d", background: "transparent", color: "#9aa0aa", cursor: "pointer" }}>
                     Abbrechen
                   </button>
-                  <button type="submit" style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: brandColor, color: "#fff", fontWeight: 600, cursor: "pointer" }}>
-                    Absenden
+                  <button type="submit" disabled={sending} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: brandColor, color: "#fff", fontWeight: 600, cursor: sending ? "wait" : "pointer", opacity: sending ? 0.7 : 1 }}>
+                    {sending ? "Wird gesendet …" : "Absenden"}
                   </button>
                 </div>
               </form>
