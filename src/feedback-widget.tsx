@@ -261,11 +261,15 @@ export function FeedbackWidget({
               />
             ) : (
               <form
-                action={async (fd) => {
+                // onSubmit statt form-action: React 19 zeigt State-Aenderungen innerhalb einer
+                // Form-Action erst nach deren Ende -- der Knopf waere waehrend des Sendens nie gesperrt.
+                onSubmit={async (e) => {
+                  e.preventDefault();
                   if (sendeSperre.current) return;
                   sendeSperre.current = true;
                   setSending(true);
                   setError(null);
+                  const fd = new FormData(e.currentTarget);
                   schluessel.current ??= neuerSchluessel();
                   fd.set("idempotencyKey", schluessel.current);
                   try {

@@ -146,7 +146,7 @@ export async function sendFeedback(fd: FormData) {
 Rein `void` zurückgebende Actions (bestehende Einbindungen) funktionieren unverändert
 weiter — sie zeigen bei einer Ablehnung nur weiterhin unverändert "Danke" (wie bisher).
 
-## Doppel-Absenden (ab 0.7.1)
+## Doppel-Absenden (ab 0.7.2; 0.7.1 sperrt den Knopf noch nicht sichtbar)
 Das Widget sperrt „Absenden" (Knopf deaktiviert, „Wird gesendet …"), solange die
 Anfrage läuft, und schickt je Absendung einen Schlüssel als Formularfeld
 `idempotencyKey` mit (gleich bei Wiederholung nach Fehler, neu nach Erfolg). Wer
