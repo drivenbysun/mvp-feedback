@@ -146,6 +146,20 @@ export async function sendFeedback(fd: FormData) {
 Rein `void` zurückgebende Actions (bestehende Einbindungen) funktionieren unverändert
 weiter — sie zeigen bei einer Ablehnung nur weiterhin unverändert "Danke" (wie bisher).
 
+## Doppel-Absenden (ab 0.7.1)
+Das Widget sperrt „Absenden" (Knopf deaktiviert, „Wird gesendet …"), solange die
+Anfrage läuft, und schickt je Absendung einen Schlüssel als Formularfeld
+`idempotencyKey` mit (gleich bei Wiederholung nach Fehler, neu nach Erfolg). Wer
+doppelte Issues auch serverseitig verhindern will (Netz-Wiederholung, zweiter Tab),
+reicht ihn durch — ohne Angabe verhält sich alles wie bisher:
+
+```ts
+import { submitFeedback, idempotencyKeyFromFormData } from "mvp-feedback/server";
+await submitFeedback(config, { kind, text, idempotencyKey: idempotencyKeyFromFormData(formData) });
+```
+Derselbe Schlüssel legt höchstens ein Issue an (10 Min. gemerkt, **In-Memory pro
+Prozess** wie das Rate-Limit; Fehlversuche werden nicht gemerkt).
+
 ## Screenshot + Markierung (`allowScreenshot`)
 Aus StaffHubs eigenem Feedback-Modul übernommen (dort das einzige der drei mit dieser
 Funktion). Erfasst die Seite per `html2canvas` und erlaubt eine Freihand-Markierung

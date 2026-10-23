@@ -31,3 +31,10 @@ export async function attachmentsFromFormData(
   }
   return out;
 }
+
+// Liest den Absende-Schluessel, den das Widget als Formularfeld mitschickt.
+// Ergebnis direkt als `idempotencyKey` in submitFeedback reichen.
+export function idempotencyKeyFromFormData(formData: FormData, field = "idempotencyKey"): string | undefined {
+  const v = formData.get(field);
+  return typeof v === "string" && v.trim() ? v.trim().slice(0, 100) : undefined;
+}

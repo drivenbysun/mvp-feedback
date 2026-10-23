@@ -119,6 +119,13 @@ export interface IntakeInput {
    * Fällt auf das App-Ziel zurück, wenn kein platform-Ziel konfiguriert ist.
    */
   scope?: FeedbackScope;
+  /**
+   * Schluessel je Absendung (das Widget schickt ihn als Formularfeld
+   * `idempotencyKey`, siehe idempotencyKeyFromFormData). Derselbe Schluessel legt
+   * hoechstens ein Issue an; erneute Aufrufe bekommen das erste Ergebnis zurueck.
+   * Gilt pro Prozess/Instanz (In-Memory).
+   */
+  idempotencyKey?: string;
 }
 
 export interface IntakeResult {
