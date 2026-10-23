@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { KONFIG, ausfuehren, boardSchluesselFuer, lauf, mitWiederholung, planen } from "./board-einsortierer.mjs";
+import { KONFIG, ausfuehren, boardSchluesselFuer, lauf, meldeHaengt, mitWiederholung, planen } from "./board-einsortierer.mjs";
 
 // Attrappe der GitHub-GraphQL-Schnittstelle. Merkt sich jede Schreib-Mutation.
 function attrappe({ spalteBoard1 = false, issues, failSet = false, failDelete = false, boardItems = {} } = {}) {
@@ -367,5 +367,31 @@ describe("lauf (Alarm)", () => {
     await lauf({ scharf: true, json: false }, { gql, alarmFn: vi.fn(), zustand: z, pause });
     aus();
     expect(z.schreiben).not.toHaveBeenCalled();
+  });
+});
+
+describe("Wachhund 'haengt'", () => {
+  it("merkt sich den Alarm, damit der naechste gruene Lauf ihn schliesst", async () => {
+    let z = { zustand: "ok", folge: 0 };
+    const zustand = { lesen: () => z, schreiben: (n) => { z = n; } };
+    const alarmFn = vi.fn().mockResolvedValue(0);
+    await meldeHaengt({ scharf: true, alarmFn, zustand });
+    expect(alarmFn).toHaveBeenCalledWith("rot", "Board-Einsortierer: haengt", expect.any(String));
+    expect(z.zustand).toBe("rot");
+
+    const { gql } = attrappe({ spalteBoard1: true });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await lauf({ scharf: true, json: false }, { gql, alarmFn, zustand, pause: async () => {} });
+    log.mockRestore();
+    expect(alarmFn).toHaveBeenLastCalledWith("gruen", expect.any(String), expect.stringContaining("Von selbst erledigt"));
+    expect(z).toEqual({ zustand: "ok", folge: 0 });
+  });
+
+  it("im Trockenlauf weder Alarm noch Zustand", async () => {
+    const alarmFn = vi.fn();
+    const schreiben = vi.fn();
+    await meldeHaengt({ scharf: false, alarmFn, zustand: { lesen: () => ({ zustand: "ok", folge: 0 }), schreiben } });
+    expect(alarmFn).not.toHaveBeenCalled();
+    expect(schreiben).not.toHaveBeenCalled();
   });
 });

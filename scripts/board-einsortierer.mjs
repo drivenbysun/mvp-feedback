@@ -323,12 +323,20 @@ export async function lauf(
       zustand.schreiben({ zustand: stufe, folge });
     } else {
       if (vorher.zustand === "gelb" || vorher.zustand === "rot") {
-        await alarmFn("gruen", "Board-Einsortierer: wieder ok", "Letzter Lauf ohne Fehler.");
+        await alarmFn("gruen", "Board-Einsortierer: wieder ok", "Von selbst erledigt: letzter Lauf ohne Fehler.");
       }
       if (vorher.zustand !== "ok" || vorher.folge) zustand.schreiben({ zustand: "ok", folge: 0 });
     }
   }
   return { plan, ergebnis, fehler: fehlerText, exit: fehlerText ? 1 : 0 };
+}
+
+// Der Wachhund alarmiert rot UND merkt es sich: ohne Zustand "rot" schickt der naechste
+// gruene Lauf keine Entwarnung und der Alarm bliebe ewig offen.
+export async function meldeHaengt({ scharf, alarmFn = alarm, zustand = { lesen: zustandLesen, schreiben: zustandSchreiben } } = {}) {
+  if (!scharf) return;
+  await alarmFn("rot", "Board-Einsortierer: haengt", "Laufzeit-Obergrenze erreicht, Lauf abgebrochen.");
+  zustand.schreiben({ zustand: "rot", folge: Math.max(zustand.lesen().folge, KONFIG.rotAbFolge) });
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
@@ -337,7 +345,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // Harte Obergrenze fuer den ganzen Prozess, unabhaengig von einzelnen Aufrufen.
   const wachhund = setTimeout(async () => {
     console.error("FEHLER: Laufzeit-Obergrenze, Prozess wird beendet");
-    if (argv.includes("--scharf")) await alarm("rot", "Board-Einsortierer: haengt", "Laufzeit-Obergrenze erreicht, Lauf abgebrochen.");
+    await meldeHaengt({ scharf: argv.includes("--scharf") });
     process.exit(2);
   }, (KONFIG.gesamtSekunden + 40) * 1000);
   lauf({ scharf: argv.includes("--scharf"), json: argv.includes("--json") })
