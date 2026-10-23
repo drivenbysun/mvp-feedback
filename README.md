@@ -158,7 +158,9 @@ import { submitFeedback, idempotencyKeyFromFormData } from "mvp-feedback/server"
 await submitFeedback(config, { kind, text, idempotencyKey: idempotencyKeyFromFormData(formData) });
 ```
 Derselbe Schlüssel legt höchstens ein Issue an (10 Min. gemerkt, **In-Memory pro
-Prozess** wie das Rate-Limit; Fehlversuche werden nicht gemerkt).
+Prozess** wie das Rate-Limit; Fehlversuche werden nicht gemerkt). Der Speicher
+**überlebt keinen Neustart** und gilt nicht über mehrere Instanzen hinweg — er fängt
+Doppelklick und schnelle Wiederholung ab, keine Wiederholung nach einem Neustart.
 
 ## Screenshot + Markierung (`allowScreenshot`)
 Aus StaffHubs eigenem Feedback-Modul übernommen (dort das einzige der drei mit dieser
