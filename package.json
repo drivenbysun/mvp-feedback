@@ -1,12 +1,15 @@
 {
   "name": "mvp-feedback",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "description": "Config-getriebenes Feedback-Widget (Bug/Feature) → GitHub-Issue + Board. Für die drivenbysun MVP-Factory.",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
-    "./return-channel": "./src/return-channel.ts"
+    "./return-channel": "./src/return-channel.ts",
+    "./tracking": "./src/tracking/index.ts",
+    "./tracking/fixtures": "./src/tracking/fixtures.ts",
+    "./tracking-react": "./src/tracking-react/index.ts"
   },
   "files": ["src", "!src/**/*.test.ts", "!src/**/*.test.tsx"],
   "scripts": {
