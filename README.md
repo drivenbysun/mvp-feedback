@@ -202,8 +202,50 @@ Bausteine einzeln: `mapRequestStatus`, `overlayStatus`, `hasOpenClarification`,
 `openClarificationKeys` (Batch-Overlay über viele Requests), `REQUEST_STATUS_ORDER`,
 `DEFAULT_COLUMN_TO_STATUS`. Alles auch aus `mvp-feedback` re-exportiert.
 
+## Request-Tracking (ab 0.8.0)
+Melder **verfolgen** ihre Fehler und Wünsche: Status, Stimmen, Folgen, Kommentare, und mit
+welcher Version sie wann live gehen. Ersetzt die Seite „Meine Requests“ und den Melde-Dialog.
+Zwei Einstiege:
+
+- `mvp-feedback/tracking` — Typen und reine Ableitungen, **kein React** (läuft auch in React
+  Native und auf dem Server): Status-Pipeline, „Kommt mit“-Zeile (KW/Hotfix-Countdown),
+  Stepper, Verlauf, Dubletten-Suche, Eingabeprüfung, Texte DE/EN.
+- `mvp-feedback/tracking-react` — fertige Oberfläche, eingebettetes Stylesheet (keine
+  CSS-Datei, kein Tailwind), Farben über `--rt-*`-Variablen.
+
+```tsx
+"use client";
+import { RequestTracking } from "mvp-feedback/tracking-react";
+import { draftToFeedbackText } from "mvp-feedback/tracking";
+
+<RequestTracking
+  locale="de"
+  currentUser={{ id: user.id, name: user.name }}
+  requests={requests}          // TrackedRequest[] aus eigener Persistenz
+  releases={releases}          // Release[] (Version, Datum, enthaltene Requests, Changelog)
+  context={{ portal: "Agentur", pagePath: sanitizePagePath(location.href), environment: "Chrome 130 · v1.4.2" }}
+  onVote={(id, voted) => fetch(`/api/requests/${id}/vote`, { method: "POST" })}
+  onFollow={(id, following) => ...}
+  onComment={(id, text, { replyTo }) => ...}   // replyTo = beantwortete Team-Rückfrage
+  onSubmit={async (draft) => {
+    // Bestehende Strecke weiterverwenden: draftToFeedbackText(draft) -> submitFeedback({ text })
+    return { id: neueNummer };
+  }}
+  route={route} onRouteChange={setRoute}       // optional: an die URL koppeln
+/>
+```
+
+Die App liefert die Daten, das Paket fetcht nie. Stimmen/Folgen werden sofort angezeigt und
+springen zurück, wenn die Aktion fehlschlägt. Anhänge sind wie im Widget **standardmäßig aus**
+(`allowAttachments`); „Diese Seite aufnehmen“ erscheint nur mit `onCaptureScreenshot`, und
+„Namen unkenntlich“ steht nur, wenn die App `blurred: true` liefert.
+
+Einzeln nutzbar: `<NewRequestDialog>` (nur der Melde-Dialog), `<NotificationBell>`,
+`<NotificationToast>`. Beispieldaten fürs Ausprobieren: `mvp-feedback/tracking/fixtures`.
+
 ## Wiederverwendbarkeit
 - Kein hartkodiertes Repo/Board — alles Config.
 - Getrennte Entry-Points: `mvp-feedback` (Client-Widget) · `mvp-feedback/server` (Intake)
-  · `mvp-feedback/return-channel` (Status-/Rückfrage-Logik, framework-agnostisch).
+  · `mvp-feedback/return-channel` (Status-/Rückfrage-Logik, framework-agnostisch)
+  · `mvp-feedback/tracking` + `mvp-feedback/tracking-react` (Request-Tracking).
 - Später als GitHub-Packages-npm-Paket veröffentlichbar (`publishConfig` gesetzt).
