@@ -501,8 +501,9 @@ describe("Ziel agency (E469)", () => {
     expect(fuerStage(ks, AGENCY, true, "prod").items.map((i) => i.number)).toEqual([357]);
     expect(fuerStage(ks, AGENCY, true, "dev").items).toHaveLength(3);
   });
-  it("PROD ist fuer agency noch nicht eingetragen, Board-Moves aus", () => {
-    expect(Object.keys(AGENCY.stages)).toEqual(["dev"]);
+  it("agency: dev und prod eingetragen, #355/#356 fuer prod gesperrt, Board-Moves aus", () => {
+    expect(AGENCY.stages).toEqual({ dev: "https://agency-dev.staffhub.digital", prod: "https://agency.staffhub.digital" });
+    expect(AGENCY.ausgenommen.prod).toEqual([355, 356]);
     expect(AGENCY.mitSchreiben).toBe(false);
     expect(ZIELE.magenta).toBe(KONFIG);
   });

@@ -69,14 +69,15 @@ export const KONFIG = {
 };
 
 // agency-os (E469, Soeren 31.10.): Board 2, nur app:agency-os, Status-Rueckweg ueber mvp-feedback createBoardStatusHandler.
-// PROD bewusst noch nicht eingetragen (erst nach DEV-Bild und Go des Architect); #355/#356 sind Soerens Testmeldungen.
+// PROD nach DEV-Bild und Go des Architect (01.11.); gesendet wird nur, wenn launchd --stages prod mitgibt.
+// #355/#356 sind Soerens Testmeldungen: fuer PROD gesperrt, bis sie gemeinsam mit ihm freigegeben werden.
 export const AGENCY = {
   ...KONFIG,
   name: "agency",
   boardNummer: 2,
   label: "app:agency-os",
   repo: "drivenbysun/agency-os",
-  stages: { dev: "https://agency-dev.staffhub.digital" },
+  stages: { dev: "https://agency-dev.staffhub.digital", prod: "https://agency.staffhub.digital" },
   schluesselDatei: (stage) => join(homedir(), `.fabrik/keys/board-status-key-agency-${stage}.txt`),
   closedAtStages: ["dev", "test", "prod"],
   // Status liegt dauerhaft in der App: geschlossene Karten immer senden (live/abgelehnt).
