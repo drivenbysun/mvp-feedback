@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { KONFIG, boardLesen, fuerStage, lauf, moveAusfuehren, standSenden } from "./board-status-job.mjs";
+import { AGENCY, KONFIG, ZIELE, boardLesen, fuerStage, lauf, moveAusfuehren, standSenden } from "./board-status-job.mjs";
 
 // WICHTIG: Attrappen, keine echten Stages. Die HTTP-Formen folgen magenta-os #1976 (Entwurf);
 // sobald DEV die Endpunkte hat, muss ein Lauf gegen DEV diese Annahmen bestaetigen.
@@ -465,5 +465,65 @@ describe("lauf", () => {
 
   it("unbekannte Stage wird abgelehnt", async () => {
     await expect(lauf({ stages: ["staging"] }, umgebung())).rejects.toThrow(/unbekannte Stage/);
+  });
+});
+
+describe("Ziel agency (E469)", () => {
+  const karte = (o) => ({
+    itemId: "x", number: 1, title: "BUG: t", body: "", url: "https://github.com/drivenbysun/agency-os/issues/1",
+    status: "Next", labels: [{ name: "app:agency-os", color: "ededed" }], updatedAt: "", closedAt: null, state: "OPEN", stateReason: null, ...o,
+  });
+  it("sendet state/stateReason, auch alte geschlossene Karten und Karten ohne Spalte", () => {
+    const { items } = fuerStage(
+      [
+        karte({ number: 1 }),
+        karte({ number: 2, url: "https://github.com/drivenbysun/agency-os/issues/2", status: "Done (PROD)", state: "CLOSED", stateReason: "COMPLETED", closedAt: "2025-01-01T00:00:00Z" }),
+        karte({ number: 3, url: "https://github.com/drivenbysun/agency-os/issues/3", status: null, state: "CLOSED", stateReason: "NOT_PLANNED" }),
+      ],
+      AGENCY, true, "dev",
+    );
+    expect(items.map((i) => [i.number, i.status, i.state, i.stateReason ?? null])).toEqual([
+      [1, "Next", "OPEN", null],
+      [2, "Done (PROD)", "CLOSED", "COMPLETED"],
+      [3, null, "CLOSED", "NOT_PLANNED"],
+    ]);
+  });
+  it("magenta bleibt ohne Zustandsfelder und ohne spaltenlose Karten", () => {
+    const k = karte({ url: "https://github.com/ss-cowork-engineer/magenta-os/issues/1" });
+    expect(fuerStage([k], KONFIG, false, "dev").items[0]).not.toHaveProperty("state");
+    expect(fuerStage([{ ...k, status: null, state: "CLOSED" }], KONFIG, false, "dev").items).toHaveLength(0);
+  });
+  it("Soerens Testmeldungen #355/#356 gehen nie an PROD", () => {
+    const ks = [355, 356, 357].map((n) => karte({ number: n, url: `https://github.com/drivenbysun/agency-os/issues/${n}` }));
+    expect(fuerStage(ks, AGENCY, true, "prod").items.map((i) => i.number)).toEqual([357]);
+    expect(fuerStage(ks, AGENCY, true, "dev").items).toHaveLength(3);
+  });
+  it("PROD ist fuer agency noch nicht eingetragen, Board-Moves aus", () => {
+    expect(Object.keys(AGENCY.stages)).toEqual(["dev"]);
+    expect(AGENCY.mitSchreiben).toBe(false);
+    expect(ZIELE.magenta).toBe(KONFIG);
+  });
+  it("Lauf holt bei agency keine Verschiebe-Auftraege und fuehrt eigenen Alarm-Zustand", async () => {
+    const aufrufe = [];
+    const fetchFn = vi.fn(async (url, init) => {
+      aufrufe.push(`${init.method} ${url}`);
+      return { status: 200, json: async () => ({ ok: true }) };
+    });
+    const gespeichert = [];
+    const gql = vi.fn(async () => ({
+      user: { projectV2: { id: "P2", field: { id: "F", options: [] }, items: { pageInfo: { hasNextPage: false }, nodes: [
+        { id: "i1", status: { name: "Next" }, content: { number: 9, title: "FR: x", body: "", url: "https://github.com/drivenbysun/agency-os/issues/9", state: "OPEN", stateReason: null, closedAt: null, updatedAt: "", repository: { nameWithOwner: "drivenbysun/agency-os" }, labels: { nodes: [{ name: "app:agency-os", color: "ededed" }] } } },
+        { id: "i2", status: { name: "Next" }, content: { number: 5, title: "fremd", body: "", url: "https://github.com/ss-cowork-engineer/staffhub/issues/5", state: "OPEN", repository: { nameWithOwner: "ss-cowork-engineer/staffhub" }, labels: { nodes: [{ name: "app:staffhub", color: "ededed" }] } } },
+      ] } } },
+    }));
+    const r = await lauf({ stages: ["dev"] }, {
+      gql, fetchFn, konfig: AGENCY, schluessel: () => "k", log: () => {}, logFehler: () => {}, alarmFn: vi.fn(),
+      zustand: { lesen: () => ({}), schreiben: (z) => gespeichert.push(z) },
+    });
+    expect(r.exit).toBe(0);
+    expect(aufrufe).toEqual(["PUT https://agency-dev.staffhub.digital/api/board-status"]);
+    const body = JSON.parse(fetchFn.mock.calls[0][1].body);
+    expect(body.items.map((i) => i.number)).toEqual([9]);
+    expect(gespeichert.every((z) => !("dev" in z))).toBe(true);
   });
 });
