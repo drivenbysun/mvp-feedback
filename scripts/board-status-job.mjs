@@ -59,8 +59,11 @@ export const KONFIG = {
   },
   // Verschiebe-Auftraege der App abholen (GET /api/board-moves).
   mitSchreiben: true,
-  // Issue-Zustand (state/stateReason) mitsenden; magenta-Schema kennt die Felder noch nicht.
-  zustandFelder: false,
+  // Issue-Zustand (state/stateReason) mitsenden: true = alle Stages, Liste = nur diese Stages.
+  // magenta: nur dev (Architect „dev ja“ 01.11.); prod erst nach Soerens „passt“ zur magenta-A-Zeile.
+  zustandFelder: ["dev"],
+  // Geschlossene Karten ohne Spalte senden (Schema der App muss status:null erlauben).
+  zustandOhneSpalte: false,
   // Je Stage Issue-Nummern, die nie gesendet werden.
   ausgenommen: {},
 };
@@ -81,6 +84,7 @@ export const AGENCY = {
   erlaubteSpruenge: { dev: {}, test: {}, prod: {} },
   mitSchreiben: false,
   zustandFelder: true,
+  zustandOhneSpalte: true,
   ausgenommen: { prod: [355, 356] },
 };
 
@@ -147,10 +151,15 @@ const STATUS_SPALTEN = ["User Request", "New", "Next", "Todo", "In Progress", "R
 const BODY_SPALTEN = ["Review (DEV)", "Review (TEST)"];
 const ZUSTAND_GRUENDE = ["COMPLETED", "NOT_PLANNED", "DUPLICATE", "REOPENED"];
 const ISSUE_URL = (repo) => new RegExp(`^https://github\\.com/${repo.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}/issues/\\d+$`);
-export function itemFuerApp(it, konfig = KONFIG) {
+export function zustandAn(konfig, stage) {
+  return konfig.zustandFelder === true || (Array.isArray(konfig.zustandFelder) && konfig.zustandFelder.includes(stage));
+}
+
+export function itemFuerApp(it, konfig = KONFIG, stage = null) {
   if (!Number.isInteger(it.number) || it.number <= 0) return null;
   // Geschlossene Karte ohne Spalte traegt bei zustandFelder ihren Status ueber state/stateReason.
-  const ohneSpalteZu = konfig.zustandFelder && it.status === null && it.state === "CLOSED";
+  const mitZustand = zustandAn(konfig, stage);
+  const ohneSpalteZu = mitZustand && konfig.zustandOhneSpalte && it.status === null && it.state === "CLOSED";
   if (!STATUS_SPALTEN.includes(it.status) && !ohneSpalteZu) return null;
   if (typeof it.url !== "string" || it.url.length > 200 || !ISSUE_URL(konfig.repo).test(it.url)) return null;
   if (typeof it.title !== "string" || !it.title) return null;
@@ -162,7 +171,7 @@ export function itemFuerApp(it, konfig = KONFIG) {
   const out = { number: it.number, title: it.title.slice(0, 300), status: it.status, url: it.url, labels };
   // Abnahme-Ansicht zeigt den Volltext: nur fuer die Review-Spalten, auf 4000 gekuerzt (App weist mehr mit 400 ab).
   if (BODY_SPALTEN.includes(it.status) && typeof it.body === "string" && it.body) out.body = it.body.slice(0, 4000);
-  if (konfig.zustandFelder) {
+  if (mitZustand) {
     if (it.state === "OPEN" || it.state === "CLOSED") out.state = it.state;
     if (ZUSTAND_GRUENDE.includes(it.stateReason)) out.stateReason = it.stateReason;
   }
@@ -184,7 +193,7 @@ export function fuerStage(items, konfig = KONFIG, mitClosedAt = false, stage = n
       zuAlt++;
       continue;
     }
-    const k = itemFuerApp(it, konfig);
+    const k = itemFuerApp(it, konfig, stage);
     if (k && !gesehen.has(k.number)) {
       gesehen.add(k.number);
       // App verlangt ISO-8601 UTC mit Z; alles andere liesse den ganzen Sync mit 400 scheitern -> dann weglassen.
