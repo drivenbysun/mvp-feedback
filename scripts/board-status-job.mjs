@@ -60,8 +60,8 @@ export const KONFIG = {
   // Verschiebe-Auftraege der App abholen (GET /api/board-moves).
   mitSchreiben: true,
   // Issue-Zustand (state/stateReason) mitsenden: true = alle Stages, Liste = nur diese Stages.
-  // magenta: nur dev (Architect „dev ja“ 01.11.); prod erst nach Soerens „passt“ zur magenta-A-Zeile.
-  zustandFelder: ["dev"],
+  // magenta: dev (Architect „dev ja“ 01.11.) und prod (A471, Soeren „passt“ 2026-11-01T02:02:01Z); test bleibt ohne.
+  zustandFelder: ["dev", "prod"],
   // Geschlossene Karten ohne Spalte senden (Schema der App muss status:null erlauben).
   zustandOhneSpalte: false,
   // Je Stage Issue-Nummern, die nie gesendet werden.

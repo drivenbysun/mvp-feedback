@@ -488,12 +488,13 @@ describe("Ziel agency (E469)", () => {
       [3, null, "CLOSED", "NOT_PLANNED"],
     ]);
   });
-  it("magenta: Zustandsfelder nur auf dev, nie spaltenlose Karten", () => {
-    const k = karte({ url: "https://github.com/ss-cowork-engineer/magenta-os/issues/1", state: "CLOSED", stateReason: "NOT_PLANNED" });
+  it("magenta: Zustandsfelder auf dev und prod, nicht test; closedAt nur dev; nie spaltenlose Karten", () => {
+    const k = karte({ url: "https://github.com/ss-cowork-engineer/magenta-os/issues/1", state: "CLOSED", stateReason: "NOT_PLANNED", closedAt: new Date().toISOString().replace(/\.\d+Z$/, "Z") });
     expect(fuerStage([k], KONFIG, false, "dev").items[0]).toMatchObject({ state: "CLOSED", stateReason: "NOT_PLANNED" });
+    expect(fuerStage([k], KONFIG, false, "prod").items[0]).toMatchObject({ state: "CLOSED", stateReason: "NOT_PLANNED" });
     expect(fuerStage([k], KONFIG, false, "test").items[0]).not.toHaveProperty("state");
-    expect(fuerStage([k], KONFIG, false, "prod").items[0]).not.toHaveProperty("state");
-    expect(fuerStage([k], KONFIG, false, "prod").items[0]).not.toHaveProperty("stateReason");
+    expect(fuerStage([k], KONFIG, KONFIG.closedAtStages.includes("prod"), "prod").items[0]).not.toHaveProperty("closedAt");
+    expect(fuerStage([k], KONFIG, KONFIG.closedAtStages.includes("dev"), "dev").items[0]).toHaveProperty("closedAt");
     expect(fuerStage([{ ...k, status: null }], KONFIG, false, "dev").items).toHaveLength(0);
   });
   it("Soerens Testmeldungen #355/#356 gehen nie an PROD", () => {
