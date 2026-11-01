@@ -66,10 +66,32 @@ describe("Stepper", () => {
     expect(s[1].sub).toBe("by Sarah K.");
     expect(s[3].sub).toBe("planned Nov 12");
   });
-  it("abgelehnt ersetzt Angenommen", () => {
-    const s = en.steps(byId(1030), DEMO_RELEASES);
-    expect(s.map((x) => x.status)).toEqual(["submitted", "declined", "in_progress", "live"]);
-    expect(s.map((x) => x.state)).toEqual(["done", "declined", "future", "future"]);
+  it("abgelehnt: nur Eingereicht und Abgelehnt, auch wenn die Meldung schon in Arbeit war", () => {
+    const r = {
+      ...byId(1049),
+      status: "declined" as const,
+      statusHistory: [
+        { status: "submitted" as const, at: "2026-10-26" },
+        { status: "accepted" as const, at: "2026-10-27T08:00:00Z" },
+        { status: "in_progress" as const, at: "2026-10-27T09:00:00Z" },
+        { status: "declined" as const, at: "2026-10-27T10:00:00Z" },
+      ],
+    };
+    const s = en.steps(r, DEMO_RELEASES);
+    expect(s.map((x) => x.status)).toEqual(["submitted", "declined"]);
+    expect(s.map((x) => x.state)).toEqual(["done", "declined"]);
+    expect(s[1].sub).toBe("Oct 27");
+  });
+  it("kein vergangenes Datum an noch nicht erreichter Stufe", () => {
+    const zurueck = {
+      ...byId(1035),
+      status: "accepted" as const,
+      statusHistory: [...byId(1035).statusHistory, { status: "in_progress" as const, at: "2026-10-20" }, { status: "accepted" as const, at: "2026-10-21" }],
+    };
+    const s = en.steps(zurueck, DEMO_RELEASES);
+    expect(s[2]).toMatchObject({ state: "future", sub: "" });
+    expect(s[3]).toMatchObject({ state: "future", sub: "planned Dec 10" });
+    expect(en.steps(byId(1049), DEMO_RELEASES)[1].sub).toBe("");
   });
   it("live: alles erledigt", () => {
     expect(en.steps(byId(1027), DEMO_RELEASES).every((x) => x.state === "done")).toBe(true);
@@ -110,6 +132,24 @@ describe("Rückfrage", () => {
     expect(openQuestion(byId(1041))?.id).toBe("c4");
     const answered = { ...byId(1041), comments: [...byId(1041).comments, { id: "c5", author: DEMO_ME, at: "2026-10-27T08:00:00Z", text: "Chapter lead first." }] };
     expect(openQuestion(answered)).toBeUndefined();
+  });
+  it("Verlauf ohne Rückfrage zeigt alle Statuswechsel mit Datum", () => {
+    const r = {
+      ...byId(1049),
+      comments: [],
+      status: "in_progress" as const,
+      statusHistory: [
+        { status: "submitted" as const, at: "2026-11-01T00:40:00Z" },
+        { status: "accepted" as const, at: "2026-11-01T00:47:21Z" },
+        { status: "in_progress" as const, at: "2026-11-01T00:52:23Z" },
+      ],
+    };
+    const de1 = createFormatter({ locale: "de", now: DEMO_NOW, timeZone: TZ });
+    const a = de1.activity(r, DEMO_REQUESTS, DEMO_RELEASES, DEMO_ME, { hideOpenQuestion: false });
+    expect(a.map((e) => e.text)).toEqual(["Status geändert auf In Arbeit · 1. Nov.", "Angenommen · 1. Nov.", "Von dir eingereicht · 1. Nov."]);
+  });
+  it("offene Rückfrage bleibt im Verlauf, wenn sie oben nicht gezeigt wird", () => {
+    expect(en.activity(byId(1041), DEMO_REQUESTS, DEMO_RELEASES, DEMO_ME, { hideOpenQuestion: false }).some((e) => e.comment?.id === "c4")).toBe(true);
   });
   it("Verlauf: Dublette mit übernommenen Stimmen, Rückfrage nicht doppelt", () => {
     const a = en.activity(byId(1041), DEMO_REQUESTS, DEMO_RELEASES, DEMO_ME);

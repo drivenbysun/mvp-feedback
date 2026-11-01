@@ -62,7 +62,7 @@ export interface Formatter {
   releaseWhen(release: Release): string;
   shipsWith(r: TrackedRequest, releases: Release[]): ShipsWith;
   steps(r: TrackedRequest, releases: Release[]): Step[];
-  activity(r: TrackedRequest, all: TrackedRequest[], releases: Release[], me: UserRef): ActivityEvent[];
+  activity(r: TrackedRequest, all: TrackedRequest[], releases: Release[], me: UserRef, opts?: { hideOpenQuestion?: boolean }): ActivityEvent[];
 }
 
 export function createFormatter(opts: FormatOptions = {}): Formatter {
@@ -124,7 +124,7 @@ export function createFormatter(opts: FormatOptions = {}): Formatter {
     const subs = [
       shortDate(r.createdAt),
       accepted?.by ? texts.stepBy(accepted.by.name) : accepted ? shortDate(accepted.at) : "",
-      r.status === "in_progress" ? texts.inDevelopment : statusEntry(r, "in_progress") ? shortDate(statusEntry(r, "in_progress")!.at) : "",
+      r.status === "in_progress" ? texts.inDevelopment : current > 2 && statusEntry(r, "in_progress") ? shortDate(statusEntry(r, "in_progress")!.at) : "",
       liveAt
         ? shortDate(liveAt)
         : release && r.status !== "declined"
@@ -133,11 +133,14 @@ export function createFormatter(opts: FormatOptions = {}): Formatter {
             : texts.plannedOn(shortDate(release.plannedDate))
           : "",
     ];
-    const order: RequestStatus[] = ["submitted", r.status === "declined" ? "declined" : "accepted", "in_progress", "live"];
+    const order: RequestStatus[] =
+      r.status === "declined" ? ["submitted", "declined"] : ["submitted", "accepted", "in_progress", "live"];
+    // Ein Datum steht nur an erreichten Stufen; die noch offene Live-Stufe darf den geplanten Termin zeigen.
+    const reached = (i: number) => i <= current;
     return order.map((status, i) => ({
       status,
       label: texts.status[status],
-      sub: subs[i],
+      sub: reached(i) || (i === 3 && !liveAt) ? subs[i] : "",
       state:
         r.status === "declined" && i === 1
           ? "declined"
@@ -149,20 +152,26 @@ export function createFormatter(opts: FormatOptions = {}): Formatter {
     }));
   };
 
-  const activity = (r: TrackedRequest, all: TrackedRequest[], releases: Release[], me: UserRef): ActivityEvent[] => {
+  const activity = (
+    r: TrackedRequest,
+    all: TrackedRequest[],
+    releases: Release[],
+    me: UserRef,
+    opts: { hideOpenQuestion?: boolean } = {},
+  ): ActivityEvent[] => {
     const release = releaseOf(r, releases);
-    const question = openQuestion(r);
+    const question = (opts.hideOpenQuestion ?? true) ? openQuestion(r) : undefined;
     const events: ActivityEvent[] = [];
     for (const h of r.statusHistory) {
       let text: string;
       if (h.status === "submitted") {
         text = r.createdBy.id === me.id ? texts.submittedByYou(shortDate(h.at)) : texts.submittedBy(r.createdBy.name, shortDate(h.at));
       } else if (h.status === "accepted") {
-        text = release ? texts.acceptedFor(release.id) : texts.acceptedEvent;
+        text = `${release ? texts.acceptedFor(release.id) : texts.acceptedEvent} · ${shortDate(h.at)}`;
       } else if (h.status === "declined") {
-        text = r.duplicateOfId !== undefined ? `${texts.declinedEvent} · ${texts.mergedInto(r.duplicateOfId)}` : texts.declinedEvent;
+        text = `${texts.declinedEvent} · ${r.duplicateOfId !== undefined ? `${texts.mergedInto(r.duplicateOfId)} · ` : ""}${shortDate(h.at)}`;
       } else {
-        text = texts.statusChangedTo(texts.status[h.status]);
+        text = `${texts.statusChangedTo(texts.status[h.status])} · ${shortDate(h.at)}`;
       }
       events.push({ key: `s-${h.status}-${h.at}`, at: h.at, tone: h.status, text });
     }

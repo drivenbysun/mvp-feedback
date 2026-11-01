@@ -57,7 +57,7 @@ export function RequestDetail({ request }: { request: TrackedRequest }) {
   const ship = fmt.shipsWith(r, releases);
   const steps = fmt.steps(r, releases);
   const question = r.createdBy.id === me.id ? openQuestion(r) : undefined;
-  const events = fmt.activity(r, requests, releases, me).filter((e) => e.comment !== question);
+  const events = fmt.activity(r, requests, releases, me, { hideOpenQuestion: question !== undefined });
   const cd = release && r.status !== "live" && r.status !== "declined" ? countdown(r, release, fmt.now, fmt.timeZone) : null;
   const linked = [...r.duplicates, ...(r.duplicateOfId !== undefined ? [r.duplicateOfId] : [])];
   const send = (text: string, replyTo?: string) => actions.onComment?.(r.id, text, { replyTo });
@@ -101,7 +101,7 @@ export function RequestDetail({ request }: { request: TrackedRequest }) {
         </div>
       </div>
 
-      <ol className="rt-card rt-stepper" data-status={r.status} style={{ listStyle: "none", margin: "20px 0 0" }}>
+      <ol className="rt-card rt-stepper" data-status={r.status} style={{ listStyle: "none", margin: "20px 0 0", gridTemplateColumns: `repeat(${steps.length},1fr)` }}>
         {steps.map((s, i) => (
           <li key={s.status} className="rt-step" data-state={s.state}>
             {i < steps.length - 1 && <span className="rt-step-line" />}
