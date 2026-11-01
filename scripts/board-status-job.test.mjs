@@ -497,14 +497,14 @@ describe("Ziel agency (E469)", () => {
     expect(fuerStage([k], KONFIG, KONFIG.closedAtStages.includes("dev"), "dev").items[0]).toHaveProperty("closedAt");
     expect(fuerStage([{ ...k, status: null }], KONFIG, false, "dev").items).toHaveLength(0);
   });
-  it("Soerens Testmeldungen #355/#356 gehen nie an PROD", () => {
+  it("ausgenommen sperrt Nummern je Stage", () => {
     const ks = [355, 356, 357].map((n) => karte({ number: n, url: `https://github.com/drivenbysun/agency-os/issues/${n}` }));
-    expect(fuerStage(ks, AGENCY, true, "prod").items.map((i) => i.number)).toEqual([357]);
-    expect(fuerStage(ks, AGENCY, true, "dev").items).toHaveLength(3);
+    expect(fuerStage(ks, { ...AGENCY, ausgenommen: { prod: [355, 356] } }, true, "prod").items.map((i) => i.number)).toEqual([357]);
+    expect(fuerStage(ks, AGENCY, true, "prod").items).toHaveLength(3);
   });
-  it("agency: dev und prod eingetragen, #355/#356 fuer prod gesperrt, Board-Moves aus", () => {
+  it("agency: dev und prod eingetragen, keine Sperren, Board-Moves aus", () => {
     expect(AGENCY.stages).toEqual({ dev: "https://agency-dev.staffhub.digital", prod: "https://agency.staffhub.digital" });
-    expect(AGENCY.ausgenommen.prod).toEqual([355, 356]);
+    expect(AGENCY.ausgenommen).toEqual({});
     expect(AGENCY.mitSchreiben).toBe(false);
     expect(ZIELE.magenta).toBe(KONFIG);
   });

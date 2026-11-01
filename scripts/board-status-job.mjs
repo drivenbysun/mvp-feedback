@@ -70,7 +70,7 @@ export const KONFIG = {
 
 // agency-os (E469, Soeren 31.10.): Board 2, nur app:agency-os, Status-Rueckweg ueber mvp-feedback createBoardStatusHandler.
 // PROD nach DEV-Bild und Go des Architect (01.11.); gesendet wird nur, wenn launchd --stages prod mitgibt.
-// #355/#356 sind Soerens Testmeldungen: fuer PROD gesperrt, bis sie gemeinsam mit ihm freigegeben werden.
+// #355/#356 (Soerens Testmeldungen) seit 01.11. freigegeben: er will den automatischen Ablauf vollstaendig sehen.
 export const AGENCY = {
   ...KONFIG,
   name: "agency",
@@ -86,7 +86,7 @@ export const AGENCY = {
   mitSchreiben: false,
   zustandFelder: true,
   zustandOhneSpalte: true,
-  ausgenommen: { prod: [355, 356] },
+  ausgenommen: {},
 };
 
 export const ZIELE = { magenta: KONFIG, agency: AGENCY };
