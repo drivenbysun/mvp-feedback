@@ -5,6 +5,9 @@ export { attachmentsFromFormData, idempotencyKeyFromFormData } from "./form-data
 // eingehenden Wert anwenden, bevor er gespeichert wird. Eine Bereinigung, die
 // nur der Client macht, ist keine Bereinigung.
 export { sanitizePagePath } from "./page-path";
+// Rückweg Board → App (Empfänger für den Board-Status-Job).
+export { createBoardStatusHandler, parseBoardStatusPayload } from "./board-status";
+export type { BoardStatusPayload, BoardStatusUpdate, BoardStatusHandlerOptions } from "./board-status";
 export type {
   FeedbackConfig,
   IntakeInput,

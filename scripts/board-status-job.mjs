@@ -6,6 +6,8 @@
 //   node scripts/board-status-job.mjs --stages dev,test    (ohne --stages: nichts live)
 //   --nur-lesen / --nur-schreiben                           einen Teil auslassen
 //   --trocken                                               Board lesen, NICHTS senden/verschieben
+//   --zeigen                                                im Trockenlauf jede Karte auflisten
+//   --ziel agency                                           anderes Ziel als magenta (siehe ZIELE)
 //
 // Lesen:     alle app:magenta-os-Issues von Board 1 -> PUT {stage}/api/board-status
 // Schreiben: GET {stage}/api/board-moves -> Karte verschieben -> POST .../result
@@ -18,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { ghGraphql, alarm as alarmSenden } from "./board-einsortierer.mjs";
 
 export const KONFIG = {
+  name: "magenta",
   eigentuemer: "ss-cowork-engineer",
   boardNummer: 1,
   // null = alle Issues des Repos auf Board 1 (Architect 04.10.); ein Wert = nur Issues mit diesem Label.
@@ -54,12 +57,39 @@ export const KONFIG = {
     test: { "Done (PROD)": "Review (TEST)" },
     prod: {},
   },
+  // Verschiebe-Auftraege der App abholen (GET /api/board-moves).
+  mitSchreiben: true,
+  // Issue-Zustand (state/stateReason) mitsenden; magenta-Schema kennt die Felder noch nicht.
+  zustandFelder: false,
+  // Je Stage Issue-Nummern, die nie gesendet werden.
+  ausgenommen: {},
 };
+
+// agency-os (E469, Soeren 31.10.): Board 2, nur app:agency-os, Status-Rueckweg ueber mvp-feedback createBoardStatusHandler.
+// PROD bewusst noch nicht eingetragen (erst nach DEV-Bild und Go des Architect); #355/#356 sind Soerens Testmeldungen.
+export const AGENCY = {
+  ...KONFIG,
+  name: "agency",
+  boardNummer: 2,
+  label: "app:agency-os",
+  repo: "drivenbysun/agency-os",
+  stages: { dev: "https://agency-dev.staffhub.digital" },
+  schluesselDatei: (stage) => join(homedir(), `.fabrik/keys/board-status-key-agency-${stage}.txt`),
+  closedAtStages: ["dev", "test", "prod"],
+  // Status liegt dauerhaft in der App: geschlossene Karten immer senden (live/abgelehnt).
+  doneTage: null,
+  erlaubteSpruenge: { dev: {}, test: {}, prod: {} },
+  mitSchreiben: false,
+  zustandFelder: true,
+  ausgenommen: { prod: [355, 356] },
+};
+
+export const ZIELE = { magenta: KONFIG, agency: AGENCY };
 
 const Q_BOARD = `query($o:String!,$n:Int!,$c:String){ user(login:$o){ projectV2(number:$n){ id
   field(name:"Status"){ ... on ProjectV2SingleSelectField { id options{ id name } } }
   items(first:100, after:$c){ pageInfo{ hasNextPage endCursor } nodes{ id
-    content{ ... on Issue{ number title body url state closedAt updatedAt repository{ nameWithOwner } labels(first:30){ nodes{ name color } } } }
+    content{ ... on Issue{ number title body url state stateReason closedAt updatedAt repository{ nameWithOwner } labels(first:30){ nodes{ name color } } } }
     status: fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue{ name } } } } } } }`;
 const M_SET = `mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){ updateProjectV2ItemFieldValue(input:{projectId:$p,itemId:$i,fieldId:$f,value:{singleSelectOptionId:$o}}){ projectV2Item{ id } } }`;
 
@@ -97,7 +127,7 @@ export async function boardLesen(gql, konfig = KONFIG) {
         if (!c?.number || c.repository?.nameWithOwner !== konfig.repo || (konfig.label && !labels.some((l) => l.name === konfig.label))) continue;
         items.push({
           itemId: k.id, number: c.number, title: c.title, body: c.body ?? "", url: c.url, status: k.status?.name ?? null,
-          labels, updatedAt: c.updatedAt ?? "", closedAt: c.closedAt ?? null,
+          labels, updatedAt: c.updatedAt ?? "", closedAt: c.closedAt ?? null, state: c.state ?? null, stateReason: c.stateReason ?? null,
         });
       }
       return {
@@ -115,10 +145,13 @@ export async function boardLesen(gql, konfig = KONFIG) {
 // Form der App (400 sonst, ein schlechtes Item kippt den ganzen Push): Item bereinigen oder auslassen.
 const STATUS_SPALTEN = ["User Request", "New", "Next", "Todo", "In Progress", "Review (DEV)", "Review (TEST)", "Done (PROD)", "Someday"];
 const BODY_SPALTEN = ["Review (DEV)", "Review (TEST)"];
+const ZUSTAND_GRUENDE = ["COMPLETED", "NOT_PLANNED", "DUPLICATE", "REOPENED"];
 const ISSUE_URL = (repo) => new RegExp(`^https://github\\.com/${repo.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}/issues/\\d+$`);
 export function itemFuerApp(it, konfig = KONFIG) {
   if (!Number.isInteger(it.number) || it.number <= 0) return null;
-  if (!STATUS_SPALTEN.includes(it.status)) return null;
+  // Geschlossene Karte ohne Spalte traegt bei zustandFelder ihren Status ueber state/stateReason.
+  const ohneSpalteZu = konfig.zustandFelder && it.status === null && it.state === "CLOSED";
+  if (!STATUS_SPALTEN.includes(it.status) && !ohneSpalteZu) return null;
   if (typeof it.url !== "string" || it.url.length > 200 || !ISSUE_URL(konfig.repo).test(it.url)) return null;
   if (typeof it.title !== "string" || !it.title) return null;
   const labels = [];
@@ -129,17 +162,23 @@ export function itemFuerApp(it, konfig = KONFIG) {
   const out = { number: it.number, title: it.title.slice(0, 300), status: it.status, url: it.url, labels };
   // Abnahme-Ansicht zeigt den Volltext: nur fuer die Review-Spalten, auf 4000 gekuerzt (App weist mehr mit 400 ab).
   if (BODY_SPALTEN.includes(it.status) && typeof it.body === "string" && it.body) out.body = it.body.slice(0, 4000);
+  if (konfig.zustandFelder) {
+    if (it.state === "OPEN" || it.state === "CLOSED") out.state = it.state;
+    if (ZUSTAND_GRUENDE.includes(it.stateReason)) out.stateReason = it.stateReason;
+  }
   return out;
 }
 
 // Obergrenze der App: 2000 Items. Erledigtes faellt zuerst raus, dann das Aelteste.
-export function fuerStage(items, konfig = KONFIG, mitClosedAt = false) {
+export function fuerStage(items, konfig = KONFIG, mitClosedAt = false, stage = null) {
   const gueltig = [];
   const gesehen = new Set();
   let verworfen = 0;
-  const doneGrenze = Date.now() - konfig.doneTage * 86400000;
+  const doneGrenze = konfig.doneTage == null ? -Infinity : Date.now() - konfig.doneTage * 86400000;
+  const ausgenommen = new Set((stage && konfig.ausgenommen?.[stage]) || []);
   let zuAlt = 0;
   for (const it of items) {
+    if (ausgenommen.has(it.number)) continue;
     // Altes Done (PROD) bleibt auf dem Board, geht aber nicht an die App. Ohne closedAt (z. B. wieder geoeffnet): senden.
     if (it.status === "Done (PROD)" && it.closedAt && Date.parse(it.closedAt) < doneGrenze) {
       zuAlt++;
@@ -182,7 +221,7 @@ export async function stageAufruf(fetchFn, basis, pfad, methode, schluessel, bod
 
 // ── Lesen: Stand an eine Stage schieben ──────────────────────────────────────
 export async function standSenden(fetchFn, stage, basis, schluessel, board, konfig = KONFIG) {
-  const { items, gekappt, verworfen, zuAlt } = fuerStage(board.items, konfig, (konfig.closedAtStages ?? []).includes(stage));
+  const { items, gekappt, verworfen, zuAlt } = fuerStage(board.items, konfig, (konfig.closedAtStages ?? []).includes(stage), stage);
   const r = await stageAufruf(fetchFn, basis, "/api/board-status", "PUT", schluessel, { generatedAt: new Date().toISOString(), items }, konfig);
   // 409: die Stage hat einen neueren Stand -- kein Fehler, nichts zurueckdrehen.
   if (r.status === 200 || r.status === 409) return { ok: true, status: r.status, anzahl: items.length, gekappt, verworfen, zuAlt };
@@ -201,7 +240,7 @@ export async function moveAusfuehren(gql, board, move, stage, konfig = KONFIG) {
   const erlaubterStart = erlaubt[ziel];
   if (move.fromStatus !== undefined && move.fromStatus !== erlaubterStart) return { ok: false, error: "status changed" };
   const item = board.items.find((i) => i.number === nummer);
-  if (!item) return { ok: false, error: `Karte #${nummer} nicht auf Board 1 in ${konfig.repo}${konfig.label ? ` mit ${konfig.label}` : ""}` };
+  if (!item) return { ok: false, error: `Karte #${nummer} nicht auf Board ${konfig.boardNummer} in ${konfig.repo}${konfig.label ? ` mit ${konfig.label}` : ""}` };
   if (item.status === ziel) return { ok: true, schonDa: true }; // idempotent
   if (item.status !== erlaubterStart) return { ok: false, error: "status changed" };
   await gql(M_SET, { p: board.projectId, i: item.itemId, f: board.statusFeldId, o: board.optionen[ziel] });
@@ -280,7 +319,7 @@ export async function lauf(opt, deps = {}) {
   let boardFehler = null;
   try {
     board = await boardLesen(gql, konfig);
-    log(`Board 1: ${board.items.length} Karten${konfig.label ? ` mit ${konfig.label}` : ""}`);
+    log(`Board ${konfig.boardNummer}: ${board.items.length} Karten${konfig.label ? ` mit ${konfig.label}` : ""}`);
   } catch (e) {
     boardFehler = `Board lesen: ${String(e.message ?? e).slice(0, 200)}`;
   }
@@ -291,8 +330,10 @@ export async function lauf(opt, deps = {}) {
     if (!fehler) {
       if (Date.now() - start > konfig.gesamtSekunden * 1000) fehler = `${stage}: Laufzeit-Obergrenze, Stage uebersprungen`;
       else if (opt.trocken) {
-        log(`${stage}: Trockenlauf, ${fuerStage(board.items, konfig).items.length} Karten wuerden gesendet`);
-        ergebnisse[stage] = { trocken: true };
+        const f = fuerStage(board.items, konfig, (konfig.closedAtStages ?? []).includes(stage), stage);
+        log(`${stage}: Trockenlauf, ${f.items.length} Karten wuerden gesendet`);
+        if (opt.zeigen) for (const k of f.items) log(`  #${k.number} ${k.status ?? "-"}${k.state ? ` ${k.state}` : ""}${k.stateReason ? `/${k.stateReason}` : ""}  ${k.title.slice(0, 60)}`);
+        ergebnisse[stage] = { trocken: true, items: f.items };
         continue;
       } else {
         try {
@@ -305,7 +346,7 @@ export async function lauf(opt, deps = {}) {
             if (!r.ok) teile.push(r.fehler);
             else log(`${stage}: ${r.anzahl} Karten gesendet (${r.status})${r.gekappt ? `, ${r.gekappt} wegen Obergrenze weggelassen` : ""}${r.verworfen ? `, ${r.verworfen} mit ungueltiger Form ausgelassen` : ""}${r.zuAlt ? `, ${r.zuAlt} alte Done (PROD) ausgelassen` : ""}`);
           }
-          if (!opt.nurLesen) {
+          if (!opt.nurLesen && konfig.mitSchreiben !== false) {
             const r = await schreibenFuerStage(fetchFn, gql, stage, basis, key, board, konfig);
             ergebnisse[stage] = { ...ergebnisse[stage], schreiben: r };
             if (!r.ok) teile.push(r.fehler);
@@ -318,16 +359,18 @@ export async function lauf(opt, deps = {}) {
       }
     }
     // Alarm je Stage: rot erst nach konfig.alarmNachFehlern Fehlschlaegen in Folge, gruen beim ersten Erfolg danach.
+    // magenta behaelt die alten Schluessel (dev/test/prod), weitere Ziele bekommen ein Praefix.
+    const sk = konfig.name && konfig.name !== "magenta" ? `${konfig.name}-${stage}` : stage;
     const z = zustand.lesen();
-    const vorher = z[stage] ?? "ok";
+    const vorher = z[sk] ?? "ok";
     const folge = { ...(z.folge ?? {}) };
-    folge[stage] = fehler ? (folge[stage] ?? 0) + 1 : 0;
-    const jetzt = fehler ? (folge[stage] >= konfig.alarmNachFehlern ? "rot" : vorher) : "ok";
+    folge[sk] = fehler ? (folge[sk] ?? 0) + 1 : 0;
+    const jetzt = fehler ? (folge[sk] >= konfig.alarmNachFehlern ? "rot" : vorher) : "ok";
     if (jetzt !== vorher) {
-      if (jetzt === "rot") await alarmFn("rot", `Board-Status-Job ${stage}: Fehler`, `${folge[stage]} Laeufe in Folge: ${fehler}`, `board-status-job-${stage}`);
-      else await alarmFn("gruen", `Board-Status-Job ${stage}: wieder ok`, "Letzter Lauf ohne Fehler.", `board-status-job-${stage}`);
+      if (jetzt === "rot") await alarmFn("rot", `Board-Status-Job ${sk}: Fehler`, `${folge[sk]} Laeufe in Folge: ${fehler}`, `board-status-job-${sk}`);
+      else await alarmFn("gruen", `Board-Status-Job ${sk}: wieder ok`, "Letzter Lauf ohne Fehler.", `board-status-job-${sk}`);
     }
-    if (jetzt !== vorher || JSON.stringify(folge) !== JSON.stringify(z.folge ?? {})) zustand.schreiben({ ...z, [stage]: jetzt, folge });
+    if (jetzt !== vorher || JSON.stringify(folge) !== JSON.stringify(z.folge ?? {})) zustand.schreiben({ ...z, [sk]: jetzt, folge });
     if (fehler) {
       logFehler(`FEHLER ${stage}: ${fehler}`);
       ergebnisse[stage] = { ...ergebnisse[stage], fehler };
@@ -346,7 +389,15 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     nurLesen: argv.includes("--nur-lesen"),
     nurSchreiben: argv.includes("--nur-schreiben"),
     trocken: argv.includes("--trocken"),
+    zeigen: argv.includes("--zeigen"),
   };
+  const zi = argv.indexOf("--ziel");
+  const zielName = zi >= 0 ? argv[zi + 1] : "magenta";
+  const konfig = ZIELE[zielName];
+  if (!konfig) {
+    console.error(`unbekanntes Ziel: ${zielName} (${Object.keys(ZIELE).join(", ")})`);
+    process.exit(1);
+  }
   // launchd haengt nur an: Log ab 1 MB leeren (O_APPEND, der Deskriptor bleibt gueltig).
   try {
     const LOG = "/tmp/fabrik-board-status-job.log";
@@ -359,7 +410,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     mitZeit(console.error)("FEHLER: Laufzeit-Obergrenze, Prozess wird beendet");
     process.exit(2);
   }, (KONFIG.gesamtSekunden + 60) * 1000);
-  lauf(opt, { log: mitZeit(console.log), logFehler: mitZeit(console.error) })
+  lauf(opt, { konfig, log: mitZeit(console.log), logFehler: mitZeit(console.error) })
     .then((r) => {
       clearTimeout(wachhund);
       process.exit(r.exit);

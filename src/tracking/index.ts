@@ -2,3 +2,4 @@
 export * from "./model";
 export * from "./texts";
 export * from "./format";
+export * from "./board-sync";

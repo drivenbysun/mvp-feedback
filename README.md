@@ -243,6 +243,36 @@ springen zurück, wenn die Aktion fehlschlägt. Anhänge sind wie im Widget **st
 Einzeln nutzbar: `<NewRequestDialog>` (nur der Melde-Dialog), `<NotificationBell>`,
 `<NotificationToast>`. Beispieldaten fürs Ausprobieren: `mvp-feedback/tracking/fixtures`.
 
+### Status-Rückweg vom Board (ab 0.9.0)
+Wandert die Karte auf dem Board weiter, ändert sich der Status beim Melder von selbst (Soeren E469):
+Next/Todo → Angenommen · Someday → Angenommen, ohne Termin · In Progress/Review → In Arbeit ·
+Done (PROD) oder erledigt geschlossen → Live · „nicht geplant“/Dublette geschlossen → Abgelehnt.
+
+Der Board-Status-Job (Mac mini, `scripts/board-status-job.mjs --ziel <app>`) schickt den Board-Stand an
+`PUT /api/board-status` der App. Die App braucht nur die Ticket-Nummer je Meldung und diesen Route-Handler:
+
+```ts
+// app/api/board-status/route.ts
+import { createBoardStatusHandler } from "mvp-feedback/server";
+import { applyBoardStatus } from "mvp-feedback/tracking";
+
+export const PUT = createBoardStatusHandler({
+  key: () => process.env.BOARD_STATUS_KEY,
+  apply: async (updates, { generatedAt }) => {
+    let n = 0;
+    for (const u of updates) {
+      const r = await findeMeldungZuIssue(u.issueNumber);          // eigene DB
+      const neu = r && applyBoardStatus(r, u.status, generatedAt); // null = unverändert
+      if (neu) { await speichere(r.id, neu); n++; }
+    }
+    return n;
+  },
+});
+```
+
+Ohne Schlüssel antwortet der Handler 503, mit falschem 401, bei kaputter Form 400. Mit `lastGeneratedAt`
+weist er ältere Stände mit 409 ab. Unbekannte Spalten ändern nichts.
+
 ## Wiederverwendbarkeit
 - Kein hartkodiertes Repo/Board — alles Config.
 - Getrennte Entry-Points: `mvp-feedback` (Client-Widget) · `mvp-feedback/server` (Intake)

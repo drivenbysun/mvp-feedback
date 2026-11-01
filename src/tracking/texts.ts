@@ -24,6 +24,7 @@ export interface TrackingTexts {
   notScheduled: string;
   reviewWithin: (days: number) => string;
   awaitingDecision: string;
+  noDate: string;
   duplicate: string;
   declined: string;
   mergedInto: (id: number) => string;
@@ -172,6 +173,7 @@ export const TEXTS_EN: TrackingTexts = {
   notScheduled: "Not scheduled",
   reviewWithin: (d) => `Review within ${d} ${d === 1 ? "day" : "days"}`,
   awaitingDecision: "Awaiting decision",
+  noDate: "No date yet",
   duplicate: "Duplicate",
   declined: "Declined",
   mergedInto: (id) => `Merged into #${id}`,
@@ -316,6 +318,7 @@ export const TEXTS_DE: TrackingTexts = {
   notScheduled: "Nicht geplant",
   reviewWithin: (d) => `Prüfung binnen ${d} ${d === 1 ? "Tag" : "Tagen"}`,
   awaitingDecision: "Entscheidung offen",
+  noDate: "Ohne Termin",
   duplicate: "Dublette",
   declined: "Abgelehnt",
   mergedInto: (id) => `Zusammengeführt in #${id}`,
