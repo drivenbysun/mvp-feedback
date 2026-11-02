@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { countdown, openQuestion, releaseOf, type TrackedRequest } from "../tracking";
 import { useTracking } from "./context";
 import { initials, StatusPill, TypeDot } from "./primitives";
@@ -49,6 +49,52 @@ function CommentForm({
   );
 }
 
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* z. B. ohne sicheren Kontext: Fallback unten */
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+  ta.remove();
+  return ok;
+}
+
+function CopyLinkButton({ url, label, done }: { url: string; label: string; done: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const id = window.setTimeout(() => setCopied(false), 2000);
+    return () => window.clearTimeout(id);
+  }, [copied]);
+  return (
+    <button
+      type="button"
+      className="rt-btn-outline"
+      data-copied={copied}
+      title={url}
+      onClick={async () => setCopied(await copyText(url))}
+    >
+      <span aria-live="polite">{copied ? done : label}</span>
+    </button>
+  );
+}
+
 export function RequestDetail({ request }: { request: TrackedRequest }) {
   const { fmt, me, requests, releases, actions, vote, follow, navigate } = useTracking();
   const t = fmt.texts;
@@ -83,6 +129,7 @@ export function RequestDetail({ request }: { request: TrackedRequest }) {
           <h1 className="rt-detail-title">{r.title}</h1>
         </div>
         <div className="rt-detail-actions">
+          {actions.requestLink && <CopyLinkButton url={actions.requestLink(r.id)} label={t.copyLink} done={t.linkCopied} />}
           <button
             type="button"
             className="rt-btn-outline rt-upvote"

@@ -240,6 +240,11 @@ springen zurück, wenn die Aktion fehlschlägt. Anhänge sind wie im Widget **st
 (`allowAttachments`); „Diese Seite aufnehmen“ erscheint nur mit `onCaptureScreenshot`, und
 „Namen unkenntlich“ steht nur, wenn die App `blurred: true` liefert.
 
+**Teilbarer Link je Meldung (ab 0.10.0):** Mit `requestLink={(id) => \`${origin}/app/anfragen/${id}\`}` zeigt die
+Detailseite „Link kopieren“. Die Adresse selbst verdrahtet die App: Seite `/app/anfragen/[id]` rendert `<RequestTracking
+route={{ page: "request", id }} />`, `onRouteChange` schreibt die URL fort. Liefert die App die Meldung nicht (fremd oder
+unbekannt), zeigt die Seite „Keine Berechtigung“ ohne Inhalte und ohne zu verraten, ob es die Nummer gibt.
+
 Einzeln nutzbar: `<NewRequestDialog>` (nur der Melde-Dialog), `<NotificationBell>`,
 `<NotificationToast>`. Beispieldaten fürs Ausprobieren: `mvp-feedback/tracking/fixtures`.
 

@@ -69,6 +69,10 @@ export interface TrackingTexts {
   linked: string;
   duplicateTag: string;
   linkDuplicate: string;
+  copyLink: string;
+  linkCopied: string;
+  noAccess: string;
+  noAccessHint: string;
   you: string;
   // Release-Plan
   legend: { release: string; hotfix: string; yours: string };
@@ -218,6 +222,10 @@ export const TEXTS_EN: TrackingTexts = {
   linked: "Linked",
   duplicateTag: "Duplicate",
   linkDuplicate: "+ Link a duplicate",
+  copyLink: "Copy link",
+  linkCopied: "✓ Link copied",
+  noAccess: "No access",
+  noAccessHint: "This request doesn't exist or isn't shared with you.",
   you: "you",
   legend: { release: "Release (features)", hotfix: "Hotfix (bugs)", yours: "Contains yours" },
   lanes: { releases: "Releases", features: "Features", hotfixes: "Hotfixes", bugs: "Bugs" },
@@ -363,6 +371,10 @@ export const TEXTS_DE: TrackingTexts = {
   linked: "Verknüpft",
   duplicateTag: "Dublette",
   linkDuplicate: "+ Dublette verknüpfen",
+  copyLink: "Link kopieren",
+  linkCopied: "✓ Link kopiert",
+  noAccess: "Keine Berechtigung",
+  noAccessHint: "Diese Meldung gibt es nicht, oder sie ist nicht für dich freigegeben.",
   you: "dir",
   legend: { release: "Release (Wünsche)", hotfix: "Hotfix (Fehler)", yours: "Enthält deine" },
   lanes: { releases: "Releases", features: "Wünsche", hotfixes: "Hotfixes", bugs: "Fehler" },

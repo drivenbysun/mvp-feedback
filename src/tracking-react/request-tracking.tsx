@@ -165,6 +165,7 @@ function Shell(
   const [view, setViewState] = useState<ViewMode>(props.defaultView ?? "list");
   const [scope, setScope] = useState<Scope>(props.defaultScope ?? "mine");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [justSubmitted, setJustSubmitted] = useState<Set<number>>(new Set());
   const setView = (v: ViewMode) => {
     setViewState(v);
     props.onViewChange?.(v);
@@ -216,13 +217,22 @@ function Shell(
           {selected ? (
             <RequestDetail request={selected} />
           ) : (
-            <nav className="rt-crumb" aria-label="Breadcrumb">
-              <button type="button" className="rt-link" onClick={() => navigate({ page: "requests" })}>
-                {t.allRequests}
-              </button>
-              <span>/</span>
-              <span className="rt-mono">#{route.id}</span>
-            </nav>
+            <>
+              <nav className="rt-crumb" aria-label="Breadcrumb">
+                <button type="button" className="rt-link" onClick={() => navigate({ page: "requests" })}>
+                  {t.allRequests}
+                </button>
+                <span>/</span>
+                <span className="rt-mono">#{route.id}</span>
+              </nav>
+              {/* Gerade selbst eingereicht: Liste ist nur noch nicht neu geladen, kein Rechte-Hinweis. */}
+              {!justSubmitted.has(route.id) && (
+                <div className="rt-card rt-pad rt-noaccess" role="alert">
+                  <b>{t.noAccess}</b>
+                  <p>{t.noAccessHint}</p>
+                </div>
+              )}
+            </>
           )}
         </>
       )}
@@ -259,7 +269,10 @@ function Shell(
           setDialogOpen(false);
           navigate({ page: "request", id });
         }}
-        onTrack={(id) => navigate({ page: "request", id })}
+        onTrack={(id) => {
+          setJustSubmitted((s) => new Set(s).add(id));
+          navigate({ page: "request", id });
+        }}
       />
     </div>
   );
@@ -286,8 +299,9 @@ export function RequestTracking(props: RequestTrackingProps) {
       onSubmit: props.onSubmit,
       findSimilar: props.findSimilar,
       onCaptureScreenshot: props.onCaptureScreenshot,
+      requestLink: props.requestLink,
     }),
-    [props.onVote, props.onFollow, props.onComment, props.onLinkDuplicate, props.onSubmit, props.findSimilar, props.onCaptureScreenshot],
+    [props.onVote, props.onFollow, props.onComment, props.onLinkDuplicate, props.onSubmit, props.findSimilar, props.onCaptureScreenshot, props.requestLink],
   );
   return (
     <div className={`mvpf-rt${props.className ? ` ${props.className}` : ""}`} style={props.style}>
