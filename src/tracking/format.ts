@@ -105,14 +105,15 @@ export function createFormatter(opts: FormatOptions = {}): Formatter {
     if (r.status === "declined") {
       return r.duplicateOfId !== undefined
         ? { label: texts.duplicate, sub: texts.mergedInto(r.duplicateOfId), hotfix: false }
-        : { label: texts.declined, sub: "", hotfix: false };
+        : { label: texts.notScheduled, sub: "", hotfix: false };
     }
     if (r.status === "live") {
       const at = statusEntry(r, "live")?.at ?? release?.plannedDate;
       return { label: release?.id ?? texts.status.live, sub: at ? texts.liveSince(shortDate(at)) : "", hotfix, release };
     }
     if (release) return { label: release.id, sub: releaseWhen(release), hotfix, release };
-    if (r.status === "submitted") return { label: texts.notScheduled, sub: texts.reviewWithin(reviewSlaDays), hotfix: false };
+    // Frisch eingereicht ist keine Absage: „Nicht geplant“ steht nur bei Abgelehnt.
+    if (r.status === "submitted") return { label: texts.inReview[r.type], sub: texts.reviewWithin(reviewSlaDays), hotfix: false };
     return { label: texts.noDate, sub: "", hotfix: false };
   };
 

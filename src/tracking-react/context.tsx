@@ -33,6 +33,8 @@ export interface TrackingActions {
   findSimilar?: (query: string, type: RequestType) => Promise<TrackedRequest[]> | TrackedRequest[];
   /** „Diese Seite aufnehmen". Ohne Haken wird der Knopf nicht gezeigt. */
   onCaptureScreenshot?: () => Promise<DraftAttachment | null>;
+  /** Teilbare Adresse einer Meldung (z. B. id => `${origin}/app/anfragen/${id}`). Ohne: kein „Link kopieren". */
+  requestLink?: (id: number) => string;
 }
 
 interface Ctx {

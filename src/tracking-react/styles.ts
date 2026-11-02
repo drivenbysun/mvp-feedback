@@ -160,6 +160,10 @@ export const TRACKING_CSS = `
 .rt-kv{display:flex;justify-content:space-between;font-size:14px;padding:7px 0;color:var(--rt-text-2);gap:10px}
 .rt-kv b{color:var(--rt-ink);font-weight:600}
 .rt-linked{display:flex;gap:10px;align-items:center;font-size:14px;margin-top:12px}
+.rt-btn-outline[data-copied=true]{color:var(--rt-s-live-fg)!important;border-color:var(--rt-s-live-bar)!important}
+.rt-noaccess{margin-top:20px}
+.rt-noaccess b{font-size:17px;font-weight:600;display:block}
+.rt-noaccess p{font-size:14px;color:var(--rt-muted);margin-top:6px}
 .rt-add-link{font-size:13px;font-weight:600;color:var(--rt-brand)!important;margin-top:12px;display:inline-block}
 .rt-legend{display:flex;gap:18px;margin-top:24px;font-size:13px;color:var(--rt-text-2);flex-wrap:wrap}
 .rt-legend span{display:inline-flex;align-items:center;gap:6px}

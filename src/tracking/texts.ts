@@ -22,6 +22,7 @@ export interface TrackingTexts {
   comments: (n: number) => string;
   hotfix: string;
   notScheduled: string;
+  inReview: Record<RequestType, string>;
   reviewWithin: (days: number) => string;
   awaitingDecision: string;
   noDate: string;
@@ -69,6 +70,10 @@ export interface TrackingTexts {
   linked: string;
   duplicateTag: string;
   linkDuplicate: string;
+  copyLink: string;
+  linkCopied: string;
+  noAccess: string;
+  noAccessHint: string;
   you: string;
   // Release-Plan
   legend: { release: string; hotfix: string; yours: string };
@@ -171,6 +176,7 @@ export const TEXTS_EN: TrackingTexts = {
   comments: (n) => `${n} ${n === 1 ? "comment" : "comments"}`,
   hotfix: "Hotfix",
   notScheduled: "Not scheduled",
+  inReview: { bug: "Under review", feature: "Still open" },
   reviewWithin: (d) => `Review within ${d} ${d === 1 ? "day" : "days"}`,
   awaitingDecision: "Awaiting decision",
   noDate: "No date yet",
@@ -218,6 +224,10 @@ export const TEXTS_EN: TrackingTexts = {
   linked: "Linked",
   duplicateTag: "Duplicate",
   linkDuplicate: "+ Link a duplicate",
+  copyLink: "Copy link",
+  linkCopied: "✓ Link copied",
+  noAccess: "No access",
+  noAccessHint: "This request doesn't exist or isn't shared with you.",
   you: "you",
   legend: { release: "Release (features)", hotfix: "Hotfix (bugs)", yours: "Contains yours" },
   lanes: { releases: "Releases", features: "Features", hotfixes: "Hotfixes", bugs: "Bugs" },
@@ -316,6 +326,7 @@ export const TEXTS_DE: TrackingTexts = {
   comments: (n) => `${n} ${n === 1 ? "Kommentar" : "Kommentare"}`,
   hotfix: "Hotfix",
   notScheduled: "Nicht geplant",
+  inReview: { bug: "Wird geprüft", feature: "Noch offen" },
   reviewWithin: (d) => `Prüfung binnen ${d} ${d === 1 ? "Tag" : "Tagen"}`,
   awaitingDecision: "Entscheidung offen",
   noDate: "Ohne Termin",
@@ -363,6 +374,10 @@ export const TEXTS_DE: TrackingTexts = {
   linked: "Verknüpft",
   duplicateTag: "Dublette",
   linkDuplicate: "+ Dublette verknüpfen",
+  copyLink: "Link kopieren",
+  linkCopied: "✓ Link kopiert",
+  noAccess: "Keine Berechtigung",
+  noAccessHint: "Diese Meldung gibt es nicht, oder sie ist nicht für dich freigegeben.",
   you: "dir",
   legend: { release: "Release (Wünsche)", hotfix: "Hotfix (Fehler)", yours: "Enthält deine" },
   lanes: { releases: "Releases", features: "Wünsche", hotfixes: "Hotfixes", bugs: "Fehler" },
