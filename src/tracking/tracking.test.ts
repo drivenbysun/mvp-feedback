@@ -53,7 +53,11 @@ describe("Ships with", () => {
     expect(en.shipsWith(byId(1046), DEMO_RELEASES)).toMatchObject({ label: "v2.13.3", sub: "Thu, Oct 29 · in 2 days", hotfix: true });
   });
   it("nicht geplant, Dublette, live", () => {
-    expect(en.shipsWith(byId(1049), DEMO_RELEASES)).toMatchObject({ label: "Not scheduled", sub: "Review within 2 days" });
+    expect(en.shipsWith(byId(1049), DEMO_RELEASES)).toMatchObject({ label: "Under review", sub: "Review within 2 days" });
+    expect(de.shipsWith(byId(1049), DEMO_RELEASES)).toMatchObject({ label: "Wird geprüft", sub: "Prüfung binnen 2 Tagen" });
+    expect(de.shipsWith(byId(1036), DEMO_RELEASES).label).toBe("Noch offen");
+    const abgelehnt = { ...byId(1049), status: "declined" as const };
+    expect(de.shipsWith(abgelehnt, DEMO_RELEASES).label).toBe("Nicht geplant");
     expect(en.shipsWith(byId(1030), DEMO_RELEASES)).toMatchObject({ label: "Duplicate", sub: "Merged into #1033" });
     expect(en.shipsWith(byId(1027), DEMO_RELEASES)).toMatchObject({ label: "v2.13.2", sub: "Live since Oct 20", hotfix: true });
   });

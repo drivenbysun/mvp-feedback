@@ -22,6 +22,7 @@ export interface TrackingTexts {
   comments: (n: number) => string;
   hotfix: string;
   notScheduled: string;
+  inReview: Record<RequestType, string>;
   reviewWithin: (days: number) => string;
   awaitingDecision: string;
   noDate: string;
@@ -175,6 +176,7 @@ export const TEXTS_EN: TrackingTexts = {
   comments: (n) => `${n} ${n === 1 ? "comment" : "comments"}`,
   hotfix: "Hotfix",
   notScheduled: "Not scheduled",
+  inReview: { bug: "Under review", feature: "Still open" },
   reviewWithin: (d) => `Review within ${d} ${d === 1 ? "day" : "days"}`,
   awaitingDecision: "Awaiting decision",
   noDate: "No date yet",
@@ -324,6 +326,7 @@ export const TEXTS_DE: TrackingTexts = {
   comments: (n) => `${n} ${n === 1 ? "Kommentar" : "Kommentare"}`,
   hotfix: "Hotfix",
   notScheduled: "Nicht geplant",
+  inReview: { bug: "Wird geprüft", feature: "Noch offen" },
   reviewWithin: (d) => `Prüfung binnen ${d} ${d === 1 ? "Tag" : "Tagen"}`,
   awaitingDecision: "Entscheidung offen",
   noDate: "Ohne Termin",
