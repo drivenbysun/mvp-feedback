@@ -68,10 +68,16 @@ export function TrackingProvider(props: {
   children: ReactNode;
 }) {
   const { format, me, requests, releases, actions, navigate, children } = props;
+  // Ohne feste timeZone: erst Europe/Berlin (wie beim Server-Rendern), nach dem Einhaengen die Zone des Browsers.
+  const [browserZone, setBrowserZone] = useState<string | undefined>();
+  useEffect(() => {
+    if (!format.timeZone) setBrowserZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  }, [format.timeZone]);
+  const timeZone = format.timeZone ?? browserZone;
   const fmt = useMemo(
-    () => createFormatter(format),
+    () => createFormatter({ ...format, timeZone }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [format.locale, format.timeZone, format.now?.getTime(), format.texts, format.reviewSlaDays],
+    [format.locale, timeZone, format.now?.getTime(), format.texts, format.reviewSlaDays],
   );
 
   // Optimistische Umschalter, bis die App neue `requests` liefert.
