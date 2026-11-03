@@ -59,6 +59,10 @@ export interface Formatter {
   shortDate(d: string | Date): string;
   weekdayDate(d: string | Date): string;
   relativeDay(d: string | Date): string;
+  /** Zeitpunkt mit Uhrzeit in der Zeitzone („3. Nov., 00:24“); reines Datum bleibt ohne Uhrzeit. */
+  dateTime(d: string | Date): string;
+  /** Wie relativeDay, bei Zeitpunkten mit Uhrzeit („Gestern, 14:02“). */
+  relativeDayTime(d: string | Date): string;
   releaseWhen(release: Release): string;
   shipsWith(r: TrackedRequest, releases: Release[]): ShipsWith;
   steps(r: TrackedRequest, releases: Release[]): Step[];
@@ -80,11 +84,16 @@ export function createFormatter(opts: FormatOptions = {}): Formatter {
   const short = fmt({ month: "short", day: "numeric" });
   const weekday = fmt({ weekday: "short", month: "short", day: "numeric" });
   const rel = new Intl.RelativeTimeFormat(tag, { numeric: "auto" });
-  const format = (f: ReturnType<typeof fmt>, d: string | Date) => (isDateOnly(d) ? f.day : f.zoned).format(parseDate(d));
+  // Ein kaputter Zeitstempel aus App-Daten darf nie die ganze Seite reissen: leer statt RangeError.
+  const valid = (d: string | Date) => !Number.isNaN(parseDate(d).getTime());
+  const format = (f: ReturnType<typeof fmt>, d: string | Date) => (valid(d) ? (isDateOnly(d) ? f.day : f.zoned).format(parseDate(d)) : "");
 
   const shortDate = (d: string | Date) => format(short, d);
+  const time = new Intl.DateTimeFormat(tag, { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const dateTime = (d: string | Date) => (!valid(d) ? "" : isDateOnly(d) ? shortDate(d) : `${shortDate(d)}, ${time.format(parseDate(d))}`);
   const weekdayDate = (d: string | Date) => format(weekday, d);
   const relativeDay = (d: string | Date) => {
+    if (!valid(d)) return "";
     const diff = daysUntil(d, now, timeZone);
     if (diff <= 0 && diff >= -6) {
       const s = rel.format(diff, "day");
@@ -92,6 +101,8 @@ export function createFormatter(opts: FormatOptions = {}): Formatter {
     }
     return shortDate(d);
   };
+  const relativeDayTime = (d: string | Date) =>
+    !valid(d) ? "" : isDateOnly(d) ? relativeDay(d) : `${relativeDay(d)}, ${time.format(parseDate(d))}`;
   const inDays = (n: number) => (n === 0 ? texts.today : n === 1 ? texts.tomorrow : texts.inDays(n));
 
   const releaseWhen = (release: Release) =>
@@ -123,11 +134,15 @@ export function createFormatter(opts: FormatOptions = {}): Formatter {
     const accepted = statusEntry(r, r.status === "declined" ? "declined" : "accepted");
     const liveAt = statusEntry(r, "live")?.at;
     const subs = [
-      shortDate(r.createdAt),
-      accepted?.by ? texts.stepBy(accepted.by.name) : accepted ? shortDate(accepted.at) : "",
-      r.status === "in_progress" ? texts.inDevelopment : current > 2 && statusEntry(r, "in_progress") ? shortDate(statusEntry(r, "in_progress")!.at) : "",
+      dateTime(r.createdAt),
+      accepted ? [dateTime(accepted.at), accepted.by ? texts.stepBy(accepted.by.name) : ""].filter(Boolean).join(" · ") : "",
+      r.status === "in_progress"
+        ? [statusEntry(r, "in_progress") ? dateTime(statusEntry(r, "in_progress")!.at) : "", texts.inDevelopment].filter(Boolean).join(" · ")
+        : current > 2 && statusEntry(r, "in_progress")
+          ? dateTime(statusEntry(r, "in_progress")!.at)
+          : "",
       liveAt
-        ? shortDate(liveAt)
+        ? dateTime(liveAt)
         : release && r.status !== "declined"
           ? release.kind === "hotfix"
             ? texts.plannedIn(daysUntil(release.plannedDate, now, timeZone))
@@ -166,13 +181,13 @@ export function createFormatter(opts: FormatOptions = {}): Formatter {
     for (const h of r.statusHistory) {
       let text: string;
       if (h.status === "submitted") {
-        text = r.createdBy.id === me.id ? texts.submittedByYou(shortDate(h.at)) : texts.submittedBy(r.createdBy.name, shortDate(h.at));
+        text = r.createdBy.id === me.id ? texts.submittedByYou(dateTime(h.at)) : texts.submittedBy(r.createdBy.name, dateTime(h.at));
       } else if (h.status === "accepted") {
-        text = `${release ? texts.acceptedFor(release.id) : texts.acceptedEvent} · ${shortDate(h.at)}`;
+        text = `${release ? texts.acceptedFor(release.id) : texts.acceptedEvent} · ${dateTime(h.at)}`;
       } else if (h.status === "declined") {
-        text = `${texts.declinedEvent} · ${r.duplicateOfId !== undefined ? `${texts.mergedInto(r.duplicateOfId)} · ` : ""}${shortDate(h.at)}`;
+        text = `${texts.declinedEvent} · ${r.duplicateOfId !== undefined ? `${texts.mergedInto(r.duplicateOfId)} · ` : ""}${dateTime(h.at)}`;
       } else {
-        text = `${texts.statusChangedTo(texts.status[h.status])} · ${shortDate(h.at)}`;
+        text = `${texts.statusChangedTo(texts.status[h.status])} · ${dateTime(h.at)}`;
       }
       events.push({ key: `s-${h.status}-${h.at}`, at: h.at, tone: h.status, text });
     }
@@ -181,7 +196,7 @@ export function createFormatter(opts: FormatOptions = {}): Formatter {
         key: "s-created",
         at: r.createdAt,
         tone: "submitted",
-        text: r.createdBy.id === me.id ? texts.submittedByYou(shortDate(r.createdAt)) : texts.submittedBy(r.createdBy.name, shortDate(r.createdAt)),
+        text: r.createdBy.id === me.id ? texts.submittedByYou(dateTime(r.createdAt)) : texts.submittedBy(r.createdBy.name, dateTime(r.createdAt)),
       });
     }
     for (const id of r.duplicates) {
@@ -205,6 +220,8 @@ export function createFormatter(opts: FormatOptions = {}): Formatter {
     shortDate,
     weekdayDate,
     relativeDay,
+    dateTime,
+    relativeDayTime,
     releaseWhen,
     shipsWith,
     steps,

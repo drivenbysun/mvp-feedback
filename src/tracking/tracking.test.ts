@@ -44,6 +44,37 @@ describe("Kalender", () => {
   });
 });
 
+describe("Uhrzeit (Soeren 03.11.)", () => {
+  it("Zeitpunkt mit Uhrzeit in der Zeitzone, reines Datum ohne", () => {
+    expect(de.dateTime("2026-11-02T23:24:00Z")).toBe("3. Nov., 00:24");
+    expect(createFormatter({ locale: "de", timeZone: "America/New_York" }).dateTime("2026-11-02T23:24:00Z")).toBe("2. Nov., 18:24");
+    expect(en.dateTime("2026-11-02T23:24:00Z")).toBe("Nov 3, 00:24");
+    expect(de.dateTime("2026-11-12")).toBe("12. Nov.");
+  });
+  it("Leiste zeigt Uhrzeit an erreichten Stufen, in Arbeit mit Zusatz", () => {
+    const r = {
+      ...byId(1049),
+      createdAt: "2026-11-02T23:24:00Z",
+      status: "in_progress" as const,
+      statusHistory: [
+        { status: "submitted" as const, at: "2026-11-02T23:24:00Z" },
+        { status: "accepted" as const, at: "2026-11-03T08:05:00Z" },
+        { status: "in_progress" as const, at: "2026-11-03T09:30:00Z" },
+      ],
+    };
+    expect(de.steps(r, []).map((x) => x.sub)).toEqual(["3. Nov., 00:24", "3. Nov., 09:05", "3. Nov., 10:30 · in Entwicklung", ""]);
+  });
+  it("kaputter Zeitstempel wirft nicht", () => {
+    expect(de.dateTime("2026-11-03T010:05:00Z")).toBe("");
+    expect(de.shortDate("Quatsch")).toBe("");
+    expect(de.relativeDayTime("x")).toBe("");
+    expect(() => de.steps({ ...byId(1049), createdAt: "kaputt" }, [])).not.toThrow();
+  });
+  it("Kommentarzeit relativ mit Uhrzeit", () => {
+    expect(de.relativeDayTime("2026-10-26T15:00:00Z")).toBe("Gestern, 16:00");
+  });
+});
+
 describe("Ships with", () => {
   it("Release zeigt KW und Datum", () => {
     expect(en.shipsWith(byId(1041), DEMO_RELEASES)).toMatchObject({ label: "v2.14", sub: "KW 46 · Nov 12", hotfix: false });
@@ -67,7 +98,7 @@ describe("Stepper", () => {
   it("in Arbeit: zwei erledigt, einer aktuell, einer offen", () => {
     const s = en.steps(byId(1041), DEMO_RELEASES);
     expect(s.map((x) => x.state)).toEqual(["done", "done", "current", "future"]);
-    expect(s[1].sub).toBe("by Sarah K.");
+    expect(s[1].sub).toBe("Oct 16 · by Sarah K.");
     expect(s[3].sub).toBe("planned Nov 12");
   });
   it("abgelehnt: nur Eingereicht und Abgelehnt, auch wenn die Meldung schon in Arbeit war", () => {
@@ -84,7 +115,7 @@ describe("Stepper", () => {
     const s = en.steps(r, DEMO_RELEASES);
     expect(s.map((x) => x.status)).toEqual(["submitted", "declined"]);
     expect(s.map((x) => x.state)).toEqual(["done", "declined"]);
-    expect(s[1].sub).toBe("Oct 27");
+    expect(s[1].sub).toBe("Oct 27, 11:00");
   });
   it("kein vergangenes Datum an noch nicht erreichter Stufe", () => {
     const zurueck = {
@@ -150,7 +181,11 @@ describe("Rückfrage", () => {
     };
     const de1 = createFormatter({ locale: "de", now: DEMO_NOW, timeZone: TZ });
     const a = de1.activity(r, DEMO_REQUESTS, DEMO_RELEASES, DEMO_ME, { hideOpenQuestion: false });
-    expect(a.map((e) => e.text)).toEqual(["Status geändert auf In Arbeit · 1. Nov.", "Angenommen · 1. Nov.", "Von dir eingereicht · 1. Nov."]);
+    expect(a.map((e) => e.text)).toEqual([
+      "Status geändert auf In Arbeit · 1. Nov., 01:52",
+      "Angenommen · 1. Nov., 01:47",
+      "Von dir eingereicht · 1. Nov., 01:40",
+    ]);
   });
   it("offene Rückfrage bleibt im Verlauf, wenn sie oben nicht gezeigt wird", () => {
     expect(en.activity(byId(1041), DEMO_REQUESTS, DEMO_RELEASES, DEMO_ME, { hideOpenQuestion: false }).some((e) => e.comment?.id === "c4")).toBe(true);

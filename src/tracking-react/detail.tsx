@@ -185,7 +185,7 @@ export function RequestDetail({ request }: { request: TrackedRequest }) {
                       <b>{question.author.name}</b>
                       <span className="rt-tag rt-tag-brand">{t.teamQuestion}</span>
                     </span>
-                    <span style={{ color: "var(--rt-muted)" }}>{fmt.relativeDay(question.at)}</span>
+                    <span style={{ color: "var(--rt-muted)" }}>{fmt.relativeDayTime(question.at)}</span>
                   </div>
                   <p className="rt-q-text">{question.text}</p>
                   <CommentForm
@@ -206,7 +206,7 @@ export function RequestDetail({ request }: { request: TrackedRequest }) {
                       <>
                         <span className="rt-tl-who">{e.comment.author.id === me.id ? t.you : e.comment.author.name}</span>
                         {e.comment.isTeam && <span className="rt-tag rt-tag-grey" style={{ marginLeft: 8 }}>Team</span>}
-                        <span className="rt-tl-when"> · {fmt.relativeDay(e.at)}</span>
+                        <span className="rt-tl-when"> · {fmt.relativeDayTime(e.at)}</span>
                         <br />
                         {e.text}
                       </>
