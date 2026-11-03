@@ -6,6 +6,13 @@ import {
   parseDate,
   releaseOf,
   statusEntry,
+  currentStage,
+  stageOf,
+  statusOfStage,
+  STAGE_ORDER,
+  CORE_STAGES,
+  type RequestStage,
+  type StatusChange,
   type Release,
   type RequestComment,
   type RequestStatus,
@@ -35,6 +42,7 @@ export type StepState = "done" | "current" | "future" | "declined";
 
 export interface Step {
   status: RequestStatus;
+  stage: RequestStage | "declined";
   label: string;
   sub: string;
   state: StepState;
@@ -130,42 +138,49 @@ export function createFormatter(opts: FormatOptions = {}): Formatter {
 
   const steps = (r: TrackedRequest, releases: Release[]): Step[] => {
     const release = releaseOf(r, releases);
-    const current = r.status === "declined" ? 1 : { submitted: 0, accepted: 1, in_progress: 2, live: 3 }[r.status];
-    const accepted = statusEntry(r, r.status === "declined" ? "declined" : "accepted");
     const liveAt = statusEntry(r, "live")?.at;
-    const subs = [
-      dateTime(r.createdAt),
-      accepted ? [dateTime(accepted.at), accepted.by ? texts.stepBy(accepted.by.name) : ""].filter(Boolean).join(" · ") : "",
-      r.status === "in_progress"
-        ? [statusEntry(r, "in_progress") ? dateTime(statusEntry(r, "in_progress")!.at) : "", texts.inDevelopment].filter(Boolean).join(" · ")
-        : current > 2 && statusEntry(r, "in_progress")
-          ? dateTime(statusEntry(r, "in_progress")!.at)
-          : "",
-      liveAt
-        ? dateTime(liveAt)
-        : release && r.status !== "declined"
-          ? release.kind === "hotfix"
+    if (r.status === "declined") {
+      const d = statusEntry(r, "declined");
+      return [
+        { status: "submitted", stage: "submitted", label: texts.stage.submitted, sub: dateTime(r.createdAt), state: "done" },
+        {
+          status: "declined",
+          stage: "declined",
+          label: texts.stage.declined,
+          sub: d ? [dateTime(d.at), d.by ? texts.stepBy(d.by.name) : ""].filter(Boolean).join(" · ") : "",
+          state: "declined",
+        },
+      ];
+    }
+    // Letzter Verlaufseintrag je Stufe; „Code fertig“/„Auf DEV“ erscheinen nur mit Beleg (A512).
+    const reached = new Map<RequestStage, StatusChange>();
+    for (const h of r.statusHistory) reached.set(stageOf(h), h);
+    const cur = currentStage(r);
+    const curIdx = STAGE_ORDER.indexOf(cur);
+    const shown = STAGE_ORDER.filter(
+      (st, i) => i === curIdx || (i < curIdx && (st === "submitted" || reached.has(st))) || (i > curIdx && CORE_STAGES.includes(st)),
+    );
+    const when = (st: RequestStage) => (st === "submitted" ? r.createdAt : reached.get(st)?.at);
+    return shown.map((st) => {
+      const i = STAGE_ORDER.indexOf(st);
+      const state: StepState = i < curIdx || (i === curIdx && st === "live") ? "done" : i === curIdx ? "current" : "future";
+      const at = state === "future" ? undefined : when(st);
+      const parts: string[] = at ? [dateTime(at)] : [];
+      const h = reached.get(st);
+      if (st === "accepted" && state !== "future" && h?.by) parts.push(texts.stepBy(h.by.name));
+      if (st === "in_progress" && state === "current") parts.push(texts.inDevelopment);
+      if (st === "code_ready" && h?.pr) parts.push(texts.prRef(h.pr));
+      if (st === "on_dev" && state === "current") parts.push(texts.onDevHint);
+      if (st === "live" && state === "future" && !liveAt && release) {
+        parts.push(
+          release.kind === "hotfix"
             ? texts.plannedIn(daysUntil(release.plannedDate, now, timeZone))
-            : texts.plannedOn(shortDate(release.plannedDate))
-          : "",
-    ];
-    const order: RequestStatus[] =
-      r.status === "declined" ? ["submitted", "declined"] : ["submitted", "accepted", "in_progress", "live"];
-    // Ein Datum steht nur an erreichten Stufen; die noch offene Live-Stufe darf den geplanten Termin zeigen.
-    const reached = (i: number) => i <= current;
-    return order.map((status, i) => ({
-      status,
-      label: texts.status[status],
-      sub: reached(i) || (i === 3 && !liveAt) ? subs[i] : "",
-      state:
-        r.status === "declined" && i === 1
-          ? "declined"
-          : i < current || (i === current && r.status === "live")
-            ? "done"
-            : i === current
-              ? "current"
-              : "future",
-    }));
+            : texts.plannedOn(shortDate(release.plannedDate)),
+        );
+      }
+      if (st === "live" && state === "done" && !at && liveAt) parts.push(dateTime(liveAt));
+      return { status: statusOfStage(st), stage: st, label: texts.stage[st], sub: parts.join(" · "), state };
+    });
   };
 
   const activity = (
@@ -186,10 +201,14 @@ export function createFormatter(opts: FormatOptions = {}): Formatter {
         text = `${release ? texts.acceptedFor(release.id) : texts.acceptedEvent} · ${dateTime(h.at)}`;
       } else if (h.status === "declined") {
         text = `${texts.declinedEvent} · ${r.duplicateOfId !== undefined ? `${texts.mergedInto(r.duplicateOfId)} · ` : ""}${dateTime(h.at)}`;
+      } else if (h.stage === "code_ready") {
+        text = `${texts.stage.code_ready}${h.pr ? ` · ${texts.prRef(h.pr)}` : ""} · ${dateTime(h.at)}`;
+      } else if (h.stage === "on_dev") {
+        text = `${texts.stage.on_dev} · ${dateTime(h.at)}`;
       } else {
         text = `${texts.statusChangedTo(texts.status[h.status])} · ${dateTime(h.at)}`;
       }
-      events.push({ key: `s-${h.status}-${h.at}`, at: h.at, tone: h.status, text });
+      events.push({ key: `s-${stageOf(h)}-${h.at}`, at: h.at, tone: h.status, text });
     }
     if (!r.statusHistory.some((h) => h.status === "submitted")) {
       events.push({

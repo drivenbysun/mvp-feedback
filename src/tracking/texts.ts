@@ -1,4 +1,4 @@
-import type { Audience, RequestStatus, RequestType, Severity } from "./model";
+import type { Audience, RequestStage, RequestStatus, RequestType, Severity } from "./model";
 
 export type TrackingLocale = "en" | "de";
 
@@ -18,6 +18,10 @@ export interface TrackingTexts {
   };
   columns: { votes: string; request: string; status: string; shipsWith: string };
   status: Record<RequestStatus, string>;
+  /** Schritte der Leiste (A512). */
+  stage: Record<RequestStage, string>;
+  prRef: (n: number) => string;
+  onDevHint: string;
   type: Record<RequestType, string>;
   comments: (n: number) => string;
   hotfix: string;
@@ -173,6 +177,17 @@ export const TEXTS_EN: TrackingTexts = {
     live: "Live",
   },
   type: { bug: "Bug", feature: "Feature" },
+  stage: {
+    submitted: "Submitted",
+    accepted: "Accepted",
+    in_progress: "In progress",
+    code_ready: "Code ready",
+    on_dev: "On DEV",
+    live: "Live",
+    declined: "Declined",
+  },
+  prRef: (n) => `PR #${n}`,
+  onDevHint: "ready for testing",
   comments: (n) => `${n} ${n === 1 ? "comment" : "comments"}`,
   hotfix: "Hotfix",
   notScheduled: "Not scheduled",
@@ -323,6 +338,17 @@ export const TEXTS_DE: TrackingTexts = {
     live: "Live",
   },
   type: { bug: "Fehler", feature: "Wunsch" },
+  stage: {
+    submitted: "Eingereicht",
+    accepted: "Angenommen",
+    in_progress: "In Arbeit",
+    code_ready: "Code fertig",
+    on_dev: "Auf DEV",
+    live: "Live",
+    declined: "Abgelehnt",
+  },
+  prRef: (n) => `PR #${n}`,
+  onDevHint: "zum Testen",
   comments: (n) => `${n} ${n === 1 ? "Kommentar" : "Kommentare"}`,
   hotfix: "Hotfix",
   notScheduled: "Nicht geplant",

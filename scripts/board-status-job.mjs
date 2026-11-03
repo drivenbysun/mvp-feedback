@@ -86,11 +86,16 @@ export const AGENCY = {
   mitSchreiben: false,
   zustandFelder: true,
   zustandOhneSpalte: true,
+  // A512 („Code fertig“): verknuepfte PRs an dev und prod (DEV-Bild abgenommen 03.11., E513 auf PROD).
+  prStufen: ["dev", "prod"],
   ausgenommen: {},
 };
 
 export const ZIELE = { magenta: KONFIG, agency: AGENCY };
 
+// Mit prStufen zusaetzlich die verknuepften PRs (Beleg fuer „Code fertig“, A512); sonst unveraenderte Abfrage.
+const PR_FELD = " closedByPullRequestsReferences(first:5, includeClosedPrs:true){ nodes{ number state } }";
+export const qBoard = (konfig) => (konfig.prStufen?.length ? Q_BOARD.replace("labels(first:30)", `${PR_FELD.trim()} labels(first:30)`) : Q_BOARD);
 const Q_BOARD = `query($o:String!,$n:Int!,$c:String){ user(login:$o){ projectV2(number:$n){ id
   field(name:"Status"){ ... on ProjectV2SingleSelectField { id options{ id name } } }
   items(first:100, after:$c){ pageInfo{ hasNextPage endCursor } nodes{ id
@@ -104,7 +109,7 @@ async function seiteLesen(gql, vars, konfig, frist) {
   for (let v = 1; v <= konfig.leseVersuche; v++) {
     if (v > 1 && Date.now() > frist) break;
     try {
-      return await gql(Q_BOARD, vars, { aufrufSekunden: konfig.leseAufrufSekunden });
+      return await gql(qBoard(konfig), vars, { aufrufSekunden: konfig.leseAufrufSekunden });
     } catch (e) {
       letzter = e;
       if (v < konfig.leseVersuche && konfig.leseWartenMs) await new Promise((r) => setTimeout(r, konfig.leseWartenMs));
@@ -133,6 +138,8 @@ export async function boardLesen(gql, konfig = KONFIG) {
         items.push({
           itemId: k.id, number: c.number, title: c.title, body: c.body ?? "", url: c.url, status: k.status?.name ?? null,
           labels, updatedAt: c.updatedAt ?? "", closedAt: c.closedAt ?? null, state: c.state ?? null, stateReason: c.stateReason ?? null,
+          // Nur offene oder gemergte PRs belegen „Code fertig“; geschlossen ohne Merge zaehlt nicht.
+          prs: (c.closedByPullRequestsReferences?.nodes ?? []).filter((p) => p.state === "OPEN" || p.state === "MERGED").map((p) => p.number),
         });
       }
       return {
@@ -172,6 +179,9 @@ export function itemFuerApp(it, konfig = KONFIG, stage = null) {
   const out = { number: it.number, title: it.title.slice(0, 300), status: it.status, url: it.url, labels };
   // Abnahme-Ansicht zeigt den Volltext: nur fuer die Review-Spalten, auf 4000 gekuerzt (App weist mehr mit 400 ab).
   if (BODY_SPALTEN.includes(it.status) && typeof it.body === "string" && it.body) out.body = it.body.slice(0, 4000);
+  if (konfig.prStufen?.includes(stage) && Array.isArray(it.prs) && it.prs.length) {
+    out.linkedPullRequests = it.prs.filter((n) => Number.isInteger(n) && n > 0).slice(0, 10);
+  }
   if (mitZustand) {
     if (it.state === "OPEN" || it.state === "CLOSED") out.state = it.state;
     if (ZUSTAND_GRUENDE.includes(it.stateReason)) out.stateReason = it.stateReason;
