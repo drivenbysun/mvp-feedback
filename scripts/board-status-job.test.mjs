@@ -544,7 +544,8 @@ describe("Verknuepfte PRs (A512)", () => {
   });
   it("PRs gehen nur an die freigegebenen Stages", () => {
     expect(fuerStage([karte()], AGENCY, true, "dev").items[0].linkedPullRequests).toEqual([381]);
-    expect(fuerStage([karte()], AGENCY, true, "prod").items[0]).not.toHaveProperty("linkedPullRequests");
+    expect(fuerStage([karte()], AGENCY, true, "prod").items[0].linkedPullRequests).toEqual([381]);
+    expect(fuerStage([karte()], { ...AGENCY, prStufen: ["dev"] }, true, "prod").items[0]).not.toHaveProperty("linkedPullRequests");
     expect(fuerStage([karte({ prs: [] })], AGENCY, true, "dev").items[0]).not.toHaveProperty("linkedPullRequests");
   });
   it("boardLesen nimmt nur offene oder gemergte PRs", async () => {

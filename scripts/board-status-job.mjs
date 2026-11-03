@@ -86,8 +86,8 @@ export const AGENCY = {
   mitSchreiben: false,
   zustandFelder: true,
   zustandOhneSpalte: true,
-  // A512 („Code fertig“): verknuepfte PRs zuerst nur an dev; prod nach Soerens Antwort zu E513.
-  prStufen: ["dev"],
+  // A512 („Code fertig“): verknuepfte PRs an dev und prod (DEV-Bild abgenommen 03.11., E513 auf PROD).
+  prStufen: ["dev", "prod"],
   ausgenommen: {},
 };
 
