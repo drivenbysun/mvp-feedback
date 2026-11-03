@@ -11,11 +11,40 @@ export interface UserRef {
   name: string;
 }
 
+/**
+ * Feinere Stufe innerhalb des Status (A512, Soeren 03.11.): Code fertig und Auf DEV gehören zu „In Arbeit“.
+ * Wird nur gespeichert, wenn GitHub sie belegt (verknüpfter PR bzw. Spalte „Review (DEV)“).
+ */
+export type RequestStage = RequestStatus | "code_ready" | "on_dev";
+
+export const STAGE_ORDER: RequestStage[] = ["submitted", "accepted", "in_progress", "code_ready", "on_dev", "live"];
+/** Stufen, die als kommende Schritte grau erscheinen; code_ready/on_dev nur, wenn erreicht. */
+export const CORE_STAGES: RequestStage[] = ["submitted", "accepted", "in_progress", "live"];
+
+export function statusOfStage(stage: RequestStage): RequestStatus {
+  return stage === "code_ready" || stage === "on_dev" ? "in_progress" : stage;
+}
+
 export interface StatusChange {
   status: RequestStatus;
   /** ISO-Zeitpunkt oder Datum (YYYY-MM-DD). */
   at: string;
   by?: UserRef;
+  /** Feinere Stufe; fehlt bei älteren Einträgen (dann gilt status). */
+  stage?: RequestStage;
+  /** Belegender Pull Request bei code_ready. */
+  pr?: number;
+}
+
+/** Stufe eines Verlaufseintrags. */
+export function stageOf(h: StatusChange): RequestStage {
+  return h.stage ?? h.status;
+}
+
+/** Aktuelle Stufe: letzte Stufe im Verlauf, sofern sie zum Status passt, sonst der Status. */
+export function currentStage(r: Pick<TrackedRequest, "status" | "statusHistory">): RequestStage {
+  const last = r.statusHistory[r.statusHistory.length - 1];
+  return last && statusOfStage(stageOf(last)) === r.status ? stageOf(last) : r.status;
 }
 
 export interface RequestComment {

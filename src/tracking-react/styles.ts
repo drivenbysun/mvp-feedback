@@ -334,4 +334,13 @@ export const TRACKING_CSS = `
   .rt-dialog-foot{padding:16px 18px}
   .rt-overlay{padding-top:16px}
 }
+@media (max-width:700px){
+  .rt-stepper{grid-template-columns:1fr!important;row-gap:16px}
+  .rt-step{display:grid;grid-template-columns:22px 1fr;column-gap:12px}
+  .rt-step-dot{grid-row:1/3}
+  .rt-step-label{margin-top:1px;font-size:15px}
+  .rt-step-sub{grid-column:2;font-size:13px}
+  .rt-step-line{left:10px;top:24px;bottom:-16px;right:auto;height:auto;border-top:0!important;border-left:3px solid var(--rt-ink)}
+  .rt-step[data-state=current] .rt-step-line,.rt-step[data-state=future] .rt-step-line,.rt-step[data-state=declined] .rt-step-line{border-left:2px dashed var(--rt-disabled);top:24px}
+}
 `;

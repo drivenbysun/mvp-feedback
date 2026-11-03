@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AGENCY, KONFIG, ZIELE, boardLesen, fuerStage, lauf, moveAusfuehren, standSenden } from "./board-status-job.mjs";
+import { AGENCY, KONFIG, ZIELE, boardLesen, fuerStage, lauf, moveAusfuehren, qBoard, standSenden } from "./board-status-job.mjs";
 
 // WICHTIG: Attrappen, keine echten Stages. Die HTTP-Formen folgen magenta-os #1976 (Entwurf);
 // sobald DEV die Endpunkte hat, muss ein Lauf gegen DEV diese Annahmen bestaetigen.
@@ -530,5 +530,29 @@ describe("Ziel agency (E469)", () => {
     const body = JSON.parse(fetchFn.mock.calls[0][1].body);
     expect(body.items.map((i) => i.number)).toEqual([9]);
     expect(gespeichert.every((z) => !("dev" in z))).toBe(true);
+  });
+});
+
+describe("Verknuepfte PRs (A512)", () => {
+  const karte = (o) => ({
+    itemId: "x", number: 7, title: "FR: t", body: "", url: "https://github.com/drivenbysun/agency-os/issues/7",
+    status: "In Progress", labels: [], updatedAt: "", closedAt: null, state: "OPEN", stateReason: null, prs: [381], ...o,
+  });
+  it("nur agency fragt PRs ab, magenta-Abfrage unveraendert", () => {
+    expect(qBoard(AGENCY)).toContain("closedByPullRequestsReferences");
+    expect(qBoard(KONFIG)).not.toContain("closedByPullRequestsReferences");
+  });
+  it("PRs gehen nur an die freigegebenen Stages", () => {
+    expect(fuerStage([karte()], AGENCY, true, "dev").items[0].linkedPullRequests).toEqual([381]);
+    expect(fuerStage([karte()], AGENCY, true, "prod").items[0]).not.toHaveProperty("linkedPullRequests");
+    expect(fuerStage([karte({ prs: [] })], AGENCY, true, "dev").items[0]).not.toHaveProperty("linkedPullRequests");
+  });
+  it("boardLesen nimmt nur offene oder gemergte PRs", async () => {
+    const gql = async () => ({ user: { projectV2: { id: "P", field: { id: "F", options: [] }, items: { pageInfo: { hasNextPage: false }, nodes: [
+      { id: "i", status: { name: "In Progress" }, content: { number: 7, title: "x", body: "", url: "https://github.com/drivenbysun/agency-os/issues/7", state: "OPEN", repository: { nameWithOwner: "drivenbysun/agency-os" }, labels: { nodes: [{ name: "app:agency-os", color: "ededed" }] },
+        closedByPullRequestsReferences: { nodes: [{ number: 1, state: "OPEN" }, { number: 2, state: "CLOSED" }, { number: 3, state: "MERGED" }] } } },
+    ] } } } });
+    const b = await boardLesen(gql, AGENCY);
+    expect(b.items[0].prs).toEqual([1, 3]);
   });
 });

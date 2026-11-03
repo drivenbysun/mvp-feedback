@@ -150,7 +150,7 @@ export function RequestDetail({ request }: { request: TrackedRequest }) {
 
       <ol className="rt-card rt-stepper" data-status={r.status} style={{ listStyle: "none", margin: "20px 0 0", gridTemplateColumns: `repeat(${steps.length},1fr)` }}>
         {steps.map((s, i) => (
-          <li key={s.status} className="rt-step" data-state={s.state}>
+          <li key={s.stage} className="rt-step" data-state={s.state}>
             {i < steps.length - 1 && <span className="rt-step-line" />}
             <span className="rt-step-dot" aria-hidden="true">
               {s.state === "done" ? "✓" : s.state === "declined" ? "×" : ""}

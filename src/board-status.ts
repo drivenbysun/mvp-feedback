@@ -2,8 +2,8 @@
 // Prüft Schlüssel und Form, weist ältere Stände ab und reicht nur Einträge mit
 // ableitbarem Status an die App weiter. Die App schreibt in ihre eigene DB.
 import { timingSafeEqual } from "node:crypto";
-import { trackingStatusFromBoard, type BoardStatusItem } from "./tracking/board-sync";
-import type { RequestStatus } from "./tracking/model";
+import { trackingStageFromBoard, type BoardStatusItem } from "./tracking/board-sync";
+import { statusOfStage, type RequestStage, type RequestStatus } from "./tracking/model";
 
 export interface BoardStatusPayload {
   generatedAt: string;
@@ -13,6 +13,10 @@ export interface BoardStatusPayload {
 export interface BoardStatusUpdate {
   issueNumber: number;
   status: RequestStatus;
+  /** Feine Stufe (ab 0.11.0); mit applyBoardStage speichern, damit Code fertig/Auf DEV erscheinen. */
+  stage: RequestStage;
+  /** Erster verknüpfter PR, Beleg für code_ready. */
+  pr?: number;
   item: BoardStatusItem;
 }
 
@@ -59,6 +63,9 @@ export function parseBoardStatusPayload(json: unknown): Parsed {
       state: r.state as BoardStatusItem["state"],
       stateReason: (r.stateReason as BoardStatusItem["stateReason"]) ?? null,
       closedAt: typeof r.closedAt === "string" && ISO_UTC.test(r.closedAt) ? r.closedAt : undefined,
+      linkedPullRequests: Array.isArray(r.linkedPullRequests)
+        ? (r.linkedPullRequests as unknown[]).filter((n): n is number => Number.isInteger(n) && (n as number) > 0).slice(0, 10)
+        : undefined,
     });
   }
   return { ok: true, payload: { generatedAt, items: out } };
@@ -97,8 +104,16 @@ export function createBoardStatusHandler(opts: BoardStatusHandlerOptions): (req:
 
     const updates: BoardStatusUpdate[] = [];
     for (const item of payload.items) {
-      const status = trackingStatusFromBoard(item, opts.columnMap);
-      if (status) updates.push({ issueNumber: item.number, status, item });
+      const stage = trackingStageFromBoard(item, opts.columnMap);
+      if (stage) {
+        updates.push({
+          issueNumber: item.number,
+          status: statusOfStage(stage),
+          stage,
+          ...(stage === "code_ready" && item.linkedPullRequests?.[0] ? { pr: item.linkedPullRequests[0] } : {}),
+          item,
+        });
+      }
     }
     const changed = await opts.apply(updates, payload);
     return json(200, { ok: true, received: payload.items.length, mapped: updates.length, changed: typeof changed === "number" ? changed : undefined });

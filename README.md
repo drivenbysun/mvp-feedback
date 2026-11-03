@@ -275,6 +275,11 @@ export const PUT = createBoardStatusHandler({
 });
 ```
 
+**Mehr Schritte (ab 0.11.0, A512):** Mit `applyBoardStage(r, u.stage, generatedAt, { pr: u.pr })` statt
+`applyBoardStatus` speichert die App auch „Code fertig“ (verknüpfter PR) und „Auf DEV“ (Spalte „Review (DEV)“) im
+Verlauf, ohne neue DB-Spalte (Feld `stage` im JSON-Eintrag). Die Leiste zeigt einen Schritt nur, wenn er belegt ist;
+auf dem Handy steht sie untereinander.
+
 Ohne Schlüssel antwortet der Handler 503, mit falschem 401, bei kaputter Form 400. Mit `lastGeneratedAt`
 weist er ältere Stände mit 409 ab. Unbekannte Spalten ändern nichts.
 
