@@ -251,6 +251,11 @@ unbekannt), zeigt die Seite „Keine Berechtigung“ ohne Inhalte und ohne zu ve
 - `requestBadge={(r) => (r.isPublic ? null : "nicht öffentlich")}`: kurze Marke neben dem Titel in Liste, Board und
   Detail. `null` oder leer heißt: keine Marke.
 - `readOnly`: kein Abstimmen (die Zahl bleibt sichtbar), kein Folgen, kein Kommentieren. „Neue Meldung“ bleibt.
+- `allScope` (ab 0.12.1): vierter Reiter „Alle (n)“ vorne. Er zeigt jede übergebene Meldung, auch nicht öffentliche
+  anderer, und ist vorausgewählt, solange `defaultScope` fehlt. Was ein Nutzer sehen darf, entscheidet die App mit
+  `requests`, das Paket filtert in diesem Reiter nicht.
+- `headerExtra` liegt im Bereich des Pakets, dort gilt dessen Knopf-Reset. Eigene Knöpfe dort inline stylen oder
+  mit eigener Klasse höherer Spezifität; reine Tailwind-Klassen verlieren (Hinweis agency-os).
 
 Einzeln nutzbar: `<NewRequestDialog>` (nur der Melde-Dialog), `<NotificationBell>`,
 `<NotificationToast>`. Beispieldaten fürs Ausprobieren: `mvp-feedback/tracking/fixtures`.

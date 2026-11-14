@@ -34,6 +34,11 @@ export interface RequestTrackingProps extends FormatOptions, TrackingActions, Tr
   defaultView?: ViewMode;
   onViewChange?: (view: ViewMode) => void;
   defaultScope?: Scope;
+  /**
+   * Vierter Reiter „Alle“ vorne: jede übergebene Meldung, auch nicht öffentliche anderer (A681, Plattform-Admin).
+   * Vorausgewählt, solange `defaultScope` fehlt. Welche Meldungen das sind, entscheidet die App mit `requests`.
+   */
+  allScope?: boolean;
   /** Punkt am Reiter „Was ist neu". */
   hasUnseenWhatsNew?: boolean;
   onWhatsNewSeen?: () => void;
@@ -78,6 +83,7 @@ function RequestsPage(props: {
   onNew: () => void;
   headerExtra?: ReactNode;
   tabs: ReactNode;
+  allScope?: boolean;
 }) {
   const { fmt, me, requests } = useTracking();
   const t = fmt.texts;
@@ -109,9 +115,9 @@ function RequestsPage(props: {
       </div>
       <div className="rt-bar">
         <div className="rt-scopes" role="group">
-          {(["mine", "public", "following"] as const).map((s) => (
+          {(props.allScope ? (["all", "mine", "public", "following"] as const) : (["mine", "public", "following"] as const)).map((s) => (
             <button key={s} type="button" className="rt-scope" aria-pressed={props.scope === s} onClick={() => props.setScope(s)}>
-              {t.scopes[s]} ({counts[s]})
+              {t.scopes[s] ?? (fmt.locale === "de" ? "Alle" : "All")} ({counts[s]})
             </button>
           ))}
         </div>
@@ -163,7 +169,7 @@ function Shell(
   const t = fmt.texts;
   const { route, navigate } = props;
   const [view, setViewState] = useState<ViewMode>(props.defaultView ?? "list");
-  const [scope, setScope] = useState<Scope>(props.defaultScope ?? "mine");
+  const [scope, setScope] = useState<Scope>(props.defaultScope ?? (props.allScope ? "all" : "mine"));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [justSubmitted, setJustSubmitted] = useState<Set<number>>(new Set());
   const setView = (v: ViewMode) => {
@@ -209,7 +215,7 @@ function Shell(
   return (
     <div className="rt-inner">
       {route.page === "requests" && (
-        <RequestsPage view={view} setView={setView} scope={scope} setScope={setScope} onNew={() => setDialogOpen(true)} headerExtra={props.headerExtra} tabs={tabs} />
+        <RequestsPage view={view} setView={setView} scope={scope} setScope={setScope} onNew={() => setDialogOpen(true)} headerExtra={props.headerExtra} tabs={tabs} allScope={props.allScope} />
       )}
       {route.page === "request" && (
         <>

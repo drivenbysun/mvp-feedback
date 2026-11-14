@@ -119,7 +119,8 @@ export interface Release {
   notes: ReleaseNote[];
 }
 
-export type Scope = "mine" | "public" | "following";
+/** `all` nur mit `allScope` (A681): jede übergebene Meldung, ohne Filter. */
+export type Scope = "all" | "mine" | "public" | "following";
 export type ViewMode = "list" | "board";
 export type SortKey = "recent" | "votes";
 
@@ -237,6 +238,7 @@ export function countdown(r: TrackedRequest, release: Release, now: Date, timeZo
 // ------------------------------------------------------------
 
 export function inScope(r: TrackedRequest, scope: Scope, me: UserRef): boolean {
+  if (scope === "all") return true;
   if (scope === "mine") return r.createdBy.id === me.id;
   if (scope === "following") return r.followedByMe;
   return r.isPublic;
@@ -244,6 +246,7 @@ export function inScope(r: TrackedRequest, scope: Scope, me: UserRef): boolean {
 
 export function scopeCounts(requests: TrackedRequest[], me: UserRef): Record<Scope, number> {
   return {
+    all: requests.length,
     mine: requests.filter((r) => inScope(r, "mine", me)).length,
     public: requests.filter((r) => inScope(r, "public", me)).length,
     following: requests.filter((r) => inScope(r, "following", me)).length,
