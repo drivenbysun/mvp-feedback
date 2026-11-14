@@ -37,7 +37,23 @@ export interface TrackingActions {
   requestLink?: (id: number) => string;
 }
 
+/** Zusatz-Darstellung (A681). Alles optional, ohne Angabe bleibt die Seite unverändert. */
+export interface TrackingDisplay {
+  /** Eigene Spalte in der Liste (nach „Meldung“), z. B. „Agentur · von“. Nur Listenansicht. */
+  extraColumn?: {
+    header: string;
+    render: (request: TrackedRequest) => ReactNode;
+    /** CSS-Breite der Spalte, Standard 180px. */
+    width?: string;
+  };
+  /** Kurzer Text neben dem Titel (Liste, Board, Detail), z. B. „nicht öffentlich“. null/leer = keine Marke. */
+  requestBadge?: (request: TrackedRequest) => string | null | undefined;
+  /** Nur lesen: kein Abstimmen (Zahl bleibt sichtbar), kein Folgen, kein Kommentieren. */
+  readOnly?: boolean;
+}
+
 interface Ctx {
+  display: TrackingDisplay;
   fmt: Formatter;
   me: UserRef;
   requests: TrackedRequest[];
@@ -65,9 +81,11 @@ export function TrackingProvider(props: {
   releases: Release[];
   actions: TrackingActions;
   navigate: (r: TrackingRoute) => void;
+  display?: TrackingDisplay;
   children: ReactNode;
 }) {
   const { format, me, requests, releases, actions, navigate, children } = props;
+  const display = useMemo<TrackingDisplay>(() => props.display ?? {}, [props.display]);
   // Ohne feste timeZone: erst Europe/Berlin (wie beim Server-Rendern), nach dem Einhaengen die Zone des Browsers.
   const [browserZone, setBrowserZone] = useState<string | undefined>();
   useEffect(() => {
@@ -123,8 +141,8 @@ export function TrackingProvider(props: {
   );
 
   const value = useMemo<Ctx>(
-    () => ({ fmt, me, requests: live, releases, actions, vote, follow, navigate }),
-    [fmt, me, live, releases, actions, vote, follow, navigate],
+    () => ({ display, fmt, me, requests: live, releases, actions, vote, follow, navigate }),
+    [display, fmt, me, live, releases, actions, vote, follow, navigate],
   );
   return <TrackingContext.Provider value={value}>{children}</TrackingContext.Provider>;
 }

@@ -15,14 +15,14 @@ import {
   type UserRef,
   type ViewMode,
 } from "../tracking";
-import { TrackingProvider, useTracking, type TrackingActions, type TrackingRoute } from "./context";
+import { TrackingProvider, useTracking, type TrackingActions, type TrackingDisplay, type TrackingRoute } from "./context";
 import { RequestDetail } from "./detail";
 import { NewRequestDialog } from "./new-request-dialog";
 import { TrackingStyles } from "./primitives";
 import { ReleasePlan, WhatsNew } from "./releases-view";
 import { RequestBoard, RequestList } from "./requests-view";
 
-export interface RequestTrackingProps extends FormatOptions, TrackingActions {
+export interface RequestTrackingProps extends FormatOptions, TrackingActions, TrackingDisplay {
   requests: TrackedRequest[];
   releases: Release[];
   currentUser: UserRef;
@@ -303,6 +303,10 @@ export function RequestTracking(props: RequestTrackingProps) {
     }),
     [props.onVote, props.onFollow, props.onComment, props.onLinkDuplicate, props.onSubmit, props.findSimilar, props.onCaptureScreenshot, props.requestLink],
   );
+  const display: TrackingDisplay = useMemo(
+    () => ({ extraColumn: props.extraColumn, requestBadge: props.requestBadge, readOnly: props.readOnly }),
+    [props.extraColumn, props.requestBadge, props.readOnly],
+  );
   return (
     <div className={`mvpf-rt${props.className ? ` ${props.className}` : ""}`} style={props.style}>
       <TrackingStyles />
@@ -313,6 +317,7 @@ export function RequestTracking(props: RequestTrackingProps) {
         releases={props.releases}
         actions={actions}
         navigate={navigate}
+        display={display}
       >
         <Shell {...props} route={route} navigate={navigate} />
       </TrackingProvider>

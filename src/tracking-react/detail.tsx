@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { countdown, openQuestion, releaseOf, type TrackedRequest } from "../tracking";
 import { useTracking } from "./context";
-import { initials, StatusPill, TypeDot } from "./primitives";
+import { initials, RequestBadge, StatusPill, TypeDot } from "./primitives";
 
 function CommentForm({
   placeholder,
@@ -96,9 +96,10 @@ function CopyLinkButton({ url, label, done }: { url: string; label: string; done
 }
 
 export function RequestDetail({ request }: { request: TrackedRequest }) {
-  const { fmt, me, requests, releases, actions, vote, follow, navigate } = useTracking();
+  const { fmt, me, requests, releases, actions, vote, follow, navigate, display } = useTracking();
   const t = fmt.texts;
   const r = request;
+  const readOnly = !!display.readOnly;
   const release = releaseOf(r, releases);
   const ship = fmt.shipsWith(r, releases);
   const steps = fmt.steps(r, releases);
@@ -126,25 +127,39 @@ export function RequestDetail({ request }: { request: TrackedRequest }) {
               {t.type[r.type]} · {r.portal} · {t.submittedOn(fmt.shortDate(r.createdAt))}
             </span>
           </div>
-          <h1 className="rt-detail-title">{r.title}</h1>
+          <h1 className="rt-detail-title">
+            {r.title}
+            <RequestBadge text={display.requestBadge?.(r)} />
+          </h1>
         </div>
         <div className="rt-detail-actions">
           {actions.requestLink && <CopyLinkButton url={actions.requestLink(r.id)} label={t.copyLink} done={t.linkCopied} />}
-          <button
-            type="button"
-            className="rt-btn-outline rt-upvote"
-            aria-pressed={r.votedByMe}
-            aria-label={`${t.columns.votes}: ${r.votes}`}
-            onClick={() => vote(r.id)}
-          >
-            <span style={{ fontSize: 10 }} aria-hidden="true">
-              ▲
+          {readOnly ? (
+            <span className="rt-btn-outline rt-upvote" data-readonly="" aria-label={`${t.columns.votes}: ${r.votes}`}>
+              <span style={{ fontSize: 10 }} aria-hidden="true">
+                ▲
+              </span>
+              {r.votes}
             </span>
-            {r.votes}
-          </button>
-          <button type="button" className="rt-btn-outline" aria-pressed={r.followedByMe} onClick={() => follow(r.id)}>
-            {r.followedByMe ? t.following : t.follow}
-          </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="rt-btn-outline rt-upvote"
+                aria-pressed={r.votedByMe}
+                aria-label={`${t.columns.votes}: ${r.votes}`}
+                onClick={() => vote(r.id)}
+              >
+                <span style={{ fontSize: 10 }} aria-hidden="true">
+                  ▲
+                </span>
+                {r.votes}
+              </button>
+              <button type="button" className="rt-btn-outline" aria-pressed={r.followedByMe} onClick={() => follow(r.id)}>
+                {r.followedByMe ? t.following : t.follow}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -188,12 +203,12 @@ export function RequestDetail({ request }: { request: TrackedRequest }) {
                     <span style={{ color: "var(--rt-muted)" }}>{fmt.relativeDayTime(question.at)}</span>
                   </div>
                   <p className="rt-q-text">{question.text}</p>
-                  <CommentForm
+                  {!readOnly && <CommentForm
                     compact
                     placeholder={t.replyTo(question.author.name.split(" ")[0]!)}
                     sendLabel={t.send}
                     onSend={(text) => send(text, question.id)}
-                  />
+                  />}
                 </div>
               </div>
             )}
@@ -217,7 +232,7 @@ export function RequestDetail({ request }: { request: TrackedRequest }) {
                 </li>
               ))}
             </ul>
-            {actions.onComment && <CommentForm placeholder={t.addComment} sendLabel={t.send} onSend={(text) => send(text)} />}
+            {actions.onComment && !readOnly && <CommentForm placeholder={t.addComment} sendLabel={t.send} onSend={(text) => send(text)} />}
           </section>
         </div>
 
