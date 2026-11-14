@@ -245,6 +245,13 @@ Detailseite „Link kopieren“. Die Adresse selbst verdrahtet die App: Seite `/
 route={{ page: "request", id }} />`, `onRouteChange` schreibt die URL fort. Liefert die App die Meldung nicht (fremd oder
 unbekannt), zeigt die Seite „Keine Berechtigung“ ohne Inhalte und ohne zu verraten, ob es die Nummer gibt.
 
+**Übersicht über mehrere Mandanten (ab 0.12.0, A681):** drei optionale Props, ohne sie bleibt die Seite unverändert.
+- `extraColumn={{ header: "Agentur · von", render: (r) => …, width?: "180px" }}`: eigene Spalte in der Liste nach
+  „Meldung“ (im Board nicht).
+- `requestBadge={(r) => (r.isPublic ? null : "nicht öffentlich")}`: kurze Marke neben dem Titel in Liste, Board und
+  Detail. `null` oder leer heißt: keine Marke.
+- `readOnly`: kein Abstimmen (die Zahl bleibt sichtbar), kein Folgen, kein Kommentieren. „Neue Meldung“ bleibt.
+
 Einzeln nutzbar: `<NewRequestDialog>` (nur der Melde-Dialog), `<NotificationBell>`,
 `<NotificationToast>`. Beispieldaten fürs Ausprobieren: `mvp-feedback/tracking/fixtures`.
 

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useState, type CSSProperties, type KeyboardEvent } from "react";
 import { boardColumns, type TrackedRequest } from "../tracking";
 import { useTracking } from "./context";
-import { StatusBar, StatusPill, TypeDot, VoteButton } from "./primitives";
+import { RequestBadge, StatusBar, StatusPill, TypeDot, VoteButton, VoteCount } from "./primitives";
 
 function openOnKey(open: () => void) {
   return (e: KeyboardEvent) => {
@@ -15,13 +15,21 @@ function openOnKey(open: () => void) {
 }
 
 export function RequestList({ requests }: { requests: TrackedRequest[] }) {
-  const { fmt, releases, vote, navigate } = useTracking();
+  const { fmt, releases, vote, navigate, display } = useTracking();
   const t = fmt.texts;
+  const extra = display.extraColumn;
   return (
-    <div className="rt-card rt-table" role="table" aria-label={t.tabs.requests}>
+    <div
+      className="rt-card rt-table"
+      role="table"
+      aria-label={t.tabs.requests}
+      data-extra={extra ? "" : undefined}
+      style={extra ? ({ "--rt-extra-w": extra.width ?? "180px" } as CSSProperties) : undefined}
+    >
       <div className="rt-table-row rt-th" role="row">
         <span className="rt-label" role="columnheader">{t.columns.votes}</span>
         <span className="rt-label" role="columnheader">{t.columns.request}</span>
+        {extra && <span className="rt-label" role="columnheader">{extra.header}</span>}
         <span className="rt-label" role="columnheader">{t.columns.status}</span>
         <span className="rt-label" role="columnheader">{t.columns.shipsWith}</span>
       </div>
@@ -29,6 +37,8 @@ export function RequestList({ requests }: { requests: TrackedRequest[] }) {
       {requests.map((r) => {
         const ship = fmt.shipsWith(r, releases);
         const open = () => navigate({ page: "request", id: r.id });
+        // Huelle nur mit Marke: ohne requestBadge bleibt das Markup exakt wie bisher.
+        const badge = display.requestBadge?.(r) || null;
         return (
           <div
             key={r.id}
@@ -40,10 +50,17 @@ export function RequestList({ requests }: { requests: TrackedRequest[] }) {
             data-request-id={r.id}
           >
             <span role="cell">
-              <VoteButton request={r} onVote={vote} fmt={fmt} />
+              {display.readOnly ? <VoteCount request={r} fmt={fmt} /> : <VoteButton request={r} onVote={vote} fmt={fmt} />}
             </span>
             <span role="cell" style={{ minWidth: 0 }}>
-              <div className="rt-title">{r.title}</div>
+              {badge ? (
+                <div className="rt-title-row">
+                  <div className="rt-title">{r.title}</div>
+                  <RequestBadge text={badge} />
+                </div>
+              ) : (
+                <div className="rt-title">{r.title}</div>
+              )}
               <div className="rt-meta">
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                   <TypeDot type={r.type} />
@@ -63,6 +80,11 @@ export function RequestList({ requests }: { requests: TrackedRequest[] }) {
                 )}
               </div>
             </span>
+            {extra && (
+              <span role="cell" className="rt-extra-cell">
+                {extra.render(r)}
+              </span>
+            )}
             <span role="cell">
               <StatusPill status={r.status} fmt={fmt} />
               <StatusBar status={r.status} />
@@ -82,7 +104,7 @@ export function RequestList({ requests }: { requests: TrackedRequest[] }) {
 }
 
 export function RequestBoard({ requests }: { requests: TrackedRequest[] }) {
-  const { fmt, releases, vote, navigate } = useTracking();
+  const { fmt, releases, vote, navigate, display } = useTracking();
   const t = fmt.texts;
   const [showDeclined, setShowDeclined] = useState(false);
   const { columns, declined } = boardColumns(requests);
@@ -120,14 +142,21 @@ export function RequestBoard({ requests }: { requests: TrackedRequest[] }) {
                     </span>
                     <span className="rt-mono">#{r.id}</span>
                   </div>
-                  <div className="rt-bcard-title">{r.title}</div>
+                  <div className="rt-bcard-title">
+                    {r.title}
+                    <RequestBadge text={display.requestBadge?.(r)} />
+                  </div>
                   <StatusBar status={r.status} />
                   <div className="rt-bcard-foot">
                     <span className="rt-target" style={ship.release ? undefined : { color: "var(--rt-ink)" }}>
                       {ship.hotfix && <span className="rt-hotfix">{t.hotfix}</span>}
                       {ship.label}
                     </span>
-                    <VoteButton request={r} onVote={vote} variant="chip" fmt={fmt} />
+                    {display.readOnly ? (
+                      <VoteCount request={r} variant="chip" fmt={fmt} />
+                    ) : (
+                      <VoteButton request={r} onVote={vote} variant="chip" fmt={fmt} />
+                    )}
                   </div>
                 </div>
               );

@@ -63,6 +63,23 @@ export function VoteButton({
   );
 }
 
+/** Marke neben dem Titel (A681). */
+export function RequestBadge({ text }: { text: string | null | undefined }) {
+  return text ? <span className="rt-badge">{text}</span> : null;
+}
+
+/** Stimmenzahl ohne Knopf, für den Nur-Lese-Modus. */
+export function VoteCount({ request, variant = "box", fmt }: { request: Pick<TrackedRequest, "votes">; variant?: "box" | "chip"; fmt: Formatter }) {
+  return (
+    <span className={variant === "box" ? "rt-vote" : "rt-chipvote"} data-readonly="" aria-label={`${fmt.texts.columns.votes}: ${request.votes}`}>
+      <span className="rt-tri" aria-hidden="true">
+        ▲
+      </span>
+      <span>{request.votes}</span>
+    </span>
+  );
+}
+
 export function initials(name: string): string {
   return name
     .split(/\s+/)

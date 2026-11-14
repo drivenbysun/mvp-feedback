@@ -58,6 +58,13 @@ export const TRACKING_CSS = `
 .rt-vote[aria-pressed=true],.rt-chipvote[aria-pressed=true]{background:var(--rt-brand-soft)!important;border-color:var(--rt-brand-border)!important;color:var(--rt-brand)!important}
 .rt-chipvote{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600;padding:3px 8px;border-radius:7px;border:1px solid var(--rt-border)!important;background:var(--rt-surface)!important;color:var(--rt-text-2)!important}
 .rt-chipvote .rt-tri{font-size:9px}
+.rt-table[data-extra] .rt-table-row{grid-template-columns:52px minmax(0,1fr) var(--rt-extra-w,180px) 170px 190px}
+.rt-extra-cell{min-width:0;font-size:13px;line-height:1.35;overflow-wrap:anywhere}
+.rt-title-row{display:flex;align-items:center;gap:8px;min-width:0}
+.rt-badge{flex:none;display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;border:1px solid var(--rt-border);color:var(--rt-text-2);font-size:11px;font-weight:500;line-height:1.6;vertical-align:middle;white-space:nowrap}
+.rt-title-row .rt-badge{margin-left:0}
+.rt-title-row .rt-title{min-width:0}
+[data-readonly].rt-vote,[data-readonly].rt-chipvote,[data-readonly].rt-upvote{cursor:default}
 .rt-title{font-size:16px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rt-meta{font-size:13px;color:var(--rt-muted);margin-top:4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .rt-meta .rt-sep::before{content:"·";color:var(--rt-faint)}
