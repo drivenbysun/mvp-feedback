@@ -143,7 +143,7 @@ describe("Countdown", () => {
 
 describe("Filtern und Zählen", () => {
   it("Zahlen der Unterreiter wie im Entwurf", () => {
-    expect(scopeCounts(DEMO_REQUESTS, DEMO_ME)).toEqual({ mine: 8, public: 11, following: 3 });
+    expect(scopeCounts(DEMO_REQUESTS, DEMO_ME)).toEqual({ all: 12, mine: 8, public: 11, following: 3 });
   });
   it("Sortierung nach Stimmen und Typfilter", () => {
     const r = queryRequests(DEMO_REQUESTS, { scope: "public", type: "feature", sort: "votes" }, DEMO_ME);
@@ -256,5 +256,16 @@ describe("Release-Plan und Was ist neu", () => {
     const voted = DEMO_REQUESTS.map((r) => (r.id === 1036 ? { ...r, votedByMe: true } : r));
     expect(whatsNewEntries(DEMO_RELEASES[0], voted, DEMO_ME)[0].note.requestId).toBe(1036);
     expect(whatsNewEntries(DEMO_RELEASES[1], DEMO_REQUESTS, DEMO_ME)[0].relation).toBe("reported");
+  });
+});
+
+describe("Scope all (A681)", () => {
+  it("inScope all nimmt jede Meldung, scopeCounts zaehlt sie", async () => {
+    const { inScope, scopeCounts, queryRequests } = await import("./model");
+    const { DEMO_REQUESTS, DEMO_ME } = await import("./fixtures");
+    expect(DEMO_REQUESTS.every((r) => inScope(r, "all", DEMO_ME))).toBe(true);
+    expect(scopeCounts(DEMO_REQUESTS, DEMO_ME).all).toBe(DEMO_REQUESTS.length);
+    const bugs = queryRequests(DEMO_REQUESTS, { scope: "all", type: "bug" }, DEMO_ME);
+    expect(bugs.length).toBe(DEMO_REQUESTS.filter((r) => r.type === "bug").length);
   });
 });

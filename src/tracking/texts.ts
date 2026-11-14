@@ -7,7 +7,8 @@ export interface TrackingTexts {
   tabs: { requests: string; releasePlan: string; whatsNew: string };
   view: { list: string; board: string };
   newRequest: string;
-  scopes: { mine: string; public: string; following: string };
+  /** `all` nur mit `allScope`; optional, damit eigene Texte ohne `all` gültig bleiben. */
+  scopes: { all?: string; mine: string; public: string; following: string };
   filters: {
     status: string;
     type: string;
@@ -166,7 +167,7 @@ export const TEXTS_EN: TrackingTexts = {
   tabs: { requests: "Requests", releasePlan: "Release plan", whatsNew: "What's new" },
   view: { list: "List", board: "Board" },
   newRequest: "+ New request",
-  scopes: { mine: "Mine", public: "All public", following: "Following" },
+  scopes: { all: "All", mine: "Mine", public: "All public", following: "Following" },
   filters: { status: "Status", type: "Type", sort: "Sort", all: "All", recent: "Recent", votes: "Votes" },
   columns: { votes: "Votes", request: "Request", status: "Status", shipsWith: "Ships with" },
   status: {
@@ -327,7 +328,7 @@ export const TEXTS_DE: TrackingTexts = {
   tabs: { requests: "Meldungen", releasePlan: "Release-Plan", whatsNew: "Was ist neu" },
   view: { list: "Liste", board: "Board" },
   newRequest: "+ Neue Meldung",
-  scopes: { mine: "Meine", public: "Alle öffentlichen", following: "Gefolgt" },
+  scopes: { all: "Alle", mine: "Meine", public: "Alle öffentlichen", following: "Gefolgt" },
   filters: { status: "Status", type: "Art", sort: "Sortierung", all: "Alle", recent: "Neueste", votes: "Stimmen" },
   columns: { votes: "Stimmen", request: "Meldung", status: "Status", shipsWith: "Kommt mit" },
   status: {

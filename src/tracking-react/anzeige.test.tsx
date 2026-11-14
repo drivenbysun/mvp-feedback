@@ -83,3 +83,25 @@ describe("Nur lesen", () => {
     expect(h).not.toContain('class="rt-inline-form"');
   });
 });
+
+describe("Reiter „Alle“ (allScope, Fehler aus Sörens PROD-Test zu A681)", () => {
+  const fremdPrivat = DEMO_REQUESTS.find((r) => !r.isPublic && r.createdBy.id !== DEMO_ME.id && !r.followedByMe)!;
+  const ohneScope = { ...basis, defaultScope: undefined };
+  it("ohne allScope: drei Reiter, fremde private Meldung nirgends", () => {
+    const h = html(ohneScope);
+    expect(zaehle(h, 'class="rt-scope"')).toBe(3);
+    for (const s of ["mine", "public", "following"] as const) expect(html({ defaultScope: s })).not.toContain(`data-request-id="${fremdPrivat.id}"`);
+  });
+  it("mit allScope: vierter Reiter vorne, vorausgewaehlt, zeigt jede Meldung", () => {
+    const h = html({ ...ohneScope, allScope: true, locale: "de" });
+    expect(zaehle(h, 'class="rt-scope"')).toBe(4);
+    expect(h).toMatch(new RegExp(`<button type="button" class="rt-scope" aria-pressed="true">Alle \\(${DEMO_REQUESTS.length}\\)</button>`));
+    expect(h).toContain(`data-request-id="${fremdPrivat.id}"`);
+    expect(zaehle(h, "data-request-id=")).toBe(DEMO_REQUESTS.length);
+  });
+  it("defaultScope gewinnt; Filter gelten auch im Reiter „Alle“", () => {
+    expect(html({ allScope: true, defaultScope: "mine" })).toMatch(/aria-pressed="true">Mine \(/);
+    const bugs = DEMO_REQUESTS.filter((r) => r.type === "bug").length;
+    expect(bugs).toBeGreaterThan(0);
+  });
+});
