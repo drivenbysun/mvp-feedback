@@ -1,4 +1,4 @@
-// In-Memory-Rate-Limit, aus Magenta OS' eigener Umsetzung extrahiert (dort
+// In-Memory-Rate-Limit, aus einer eigenen App-Umsetzung extrahiert (dort
 // bug/feature dupliziert, hier einmal, parametrisiert). Bewusst kein
 // verteilter Zähler (Redis o.ä.) -- ein Serverless-Prozess reicht als
 // Spam-Bremse, mehr Infrastruktur wäre für diesen Zweck Overengineering.

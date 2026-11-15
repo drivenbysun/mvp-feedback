@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Zentraler Board-Einsortierer (laeuft auf dem Mac mini, nicht in den Apps).
+// Zentraler Board-Einsortierer (laeuft auf dem Job-Rechner, nicht in den Apps).
 //
 // Apps legen ihre Meldungen als Issue mit Label app:<name> an (Fine-grained Token,
 // nur Issues-Recht). DIESES Skript legt offene app:*-Issues, die noch auf KEINEM
@@ -20,16 +20,18 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { hatPlatzhalter, lokaleKonfigLesen, LOKALE_KONFIG_PFAD, mitLokal } from "./lokale-konfig.mjs";
 
 export const KONFIG = {
-  eigentuemer: ["ss-cowork-engineer", "drivenbysun"],
-  boardEigentuemer: "ss-cowork-engineer",
-  // Board-Nummern der User-Projekte von ss-cowork-engineer.
+  // Echte Werte aus der lokalen Datei (scripts/lokale-konfig.mjs), hier Platzhalter.
+  eigentuemer: ["beispiel-owner", "beispiel-org"],
+  boardEigentuemer: "beispiel-owner",
+  // Board-Nummern der User-Projekte des Board-Eigentuemers.
   boards: { magenta: 1, fabrik: 2 },
   // Weitere Boards, die als "liegt schon auf einem Board" zaehlen (nie anfassen).
   weitereBoards: [3],
   // Labels, die auf Board 1 gehoeren. Alles andere mit app:* -> Board 2.
-  magentaLabels: ["app:magenta-os"],
+  magentaLabels: ["app:beispiel-a"],
   spalte: "User Request",
   labelPraefix: "app:",
   maxProLauf: 25,
@@ -140,7 +142,7 @@ export async function planen(gql, konfig = KONFIG) {
   for (const nr of konfig.weitereBoards) bekannteBoardIds.add((await ladeBoard(gql, konfig, nr)).id);
 
   // Der Blick vom Issue aus (projectItems) ist NICHT verlaesslich: fuer Repos in einer
-  // anderen Organisation (drivenbysun/*) liefert er leer, obwohl das Issue auf dem Board
+  // anderen Organisation liefert er leer, obwohl das Issue auf dem Board
   // liegt. Verbindlich ist der Blick vom Board aus.
   const aufBoards = new Set();
   for (const nr of alleBoardNummern) {
@@ -348,7 +350,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     await meldeHaengt({ scharf: argv.includes("--scharf") });
     process.exit(2);
   }, (KONFIG.gesamtSekunden + 40) * 1000);
-  lauf({ scharf: argv.includes("--scharf"), json: argv.includes("--json") })
+  const konfig = mitLokal(KONFIG, lokaleKonfigLesen()?.einsortierer);
+  if (hatPlatzhalter(konfig)) {
+    console.error(`lokale Konfiguration fuer den Einsortierer fehlt (${LOKALE_KONFIG_PFAD()}), im Repo stehen nur Platzhalter`);
+    process.exit(1);
+  }
+  lauf({ scharf: argv.includes("--scharf"), json: argv.includes("--json") }, { konfig })
     .then((r) => {
       clearTimeout(wachhund);
       process.exit(r.exit);

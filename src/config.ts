@@ -1,4 +1,4 @@
-// Konfiguration je Projekt — genau das, was bei Magenta hartkodiert war, wird
+// Konfiguration je Projekt — genau das, was in der ersten App hartkodiert war, wird
 // hier reingereicht. So kann jedes MVP das gleiche Paket mit eigenen Werten nutzen.
 export type IntakeKind = "bug" | "feature";
 
@@ -7,7 +7,7 @@ export type IntakeKind = "bug" | "feature";
 export interface IntakeTarget {
   /** Repo, in dem die Issues angelegt werden, "owner/repo". */
   repo: string;
-  /** Projekt-Label, das jede Meldung bekommt, z. B. "app:agency-os". */
+  /** Projekt-Label, das jede Meldung bekommt, z. B. "app:beispiel". */
   appLabel: string;
   /** Optional: ProjectV2-Board-Node-ID. */
   boardProjectId?: string;
@@ -62,13 +62,13 @@ export interface FeedbackConfig extends IntakeTarget {
   tokenEnv?: string;
   /**
    * Direkter Token — hat Vorrang vor tokenEnv/Default. Für Consumer mit eigener
-   * Token-Auflösung (z. B. Magenta OS: GH_PAT_SERVER→GH_PROJECT_TOKEN→GH_TOKEN).
+   * Token-Auflösung (z. B. z. B. GH_PAT_SERVER→GH_PROJECT_TOKEN→GH_TOKEN).
    */
   token?: string;
   /**
    * Mindestlänge des Freitexts in Zeichen, serverseitig erzwungen (Default: 10).
    * Ein `required`-Feld im Client reicht nicht — ein Leerzeichen erfüllt das
-   * schon (Lücke, die agency-os' eigene Einbindung hatte, andere Consumer
+   * schon (Lücke, die eine eigene Einbindung hatte, andere Consumer
    * hatten das nur clientseitig oder gar nicht durchgesetzt).
    */
   minLength?: number;
@@ -76,7 +76,7 @@ export interface FeedbackConfig extends IntakeTarget {
    * Rate-Limit pro Absender (In-Memory, siehe rate-limit.ts). Ohne Angabe:
    * kein Limit. In-Memory gilt NUR pro Serverless-Instanz/Prozess — kein
    * verteilter Zähler. Das ist eine bewusste Grenze, keine Nachlässigkeit:
-   * dieselbe Grenze hatte Magenta OS' eigene Umsetzung schon, und ein
+   * dieselbe Grenze hatte die erste eigene Umsetzung schon, und ein
    * einfacher Spam-Schutz braucht keine Redis-Abhängigkeit im Paket.
    */
   rateLimit?: { max: number; windowMs: number };

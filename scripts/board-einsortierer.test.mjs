@@ -6,7 +6,7 @@ function attrappe({ spalteBoard1 = false, issues, failSet = false, failDelete = 
   const schreib = [];
   const board = (nr) => ({
     id: `B${nr}`,
-    title: nr === 1 ? "Magenta OS" : nr === 2 ? "MVP Factory" : "Staffing",
+    title: nr === 1 ? "Board A" : nr === 2 ? "Board B" : "Board C",
     field: {
       id: `F${nr}`,
       options: [
@@ -16,13 +16,13 @@ function attrappe({ spalteBoard1 = false, issues, failSet = false, failDelete = 
     },
   });
   const standard = {
-    "ss-cowork-engineer/staffhub": [
+    "beispiel-owner/beispiel-repo-c": [
       { id: "I1", number: 1, title: "BUG: neu", url: "u1", projectItems: { nodes: [] } },
       { id: "I2", number: 2, title: "schon da", url: "u2", projectItems: { nodes: [{ project: { id: "B2" } }] } },
       { id: "I3", number: 3, title: "auf fremdem Board", url: "u3", projectItems: { nodes: [{ project: { id: "B1" } }] } },
     ],
-    "drivenbysun/agency-os": [{ id: "I4", number: 4, title: "FR: neu", url: "u4", projectItems: { nodes: [] } }],
-    "ss-cowork-engineer/magenta-os": [{ id: "I5", number: 5, title: "magenta neu", url: "u5", labels: { nodes: [{ name: "app:magenta-os" }] }, projectItems: { nodes: [] } }],
+    "beispiel-org/beispiel-repo-b": [{ id: "I4", number: 4, title: "FR: neu", url: "u4", projectItems: { nodes: [] } }],
+    "beispiel-owner/beispiel-repo-a": [{ id: "I5", number: 5, title: "a neu", url: "u5", labels: { nodes: [{ name: "app:beispiel-a" }] }, projectItems: { nodes: [] } }],
   };
   const tabelle = issues ?? standard;
 
@@ -68,11 +68,11 @@ function attrappe({ spalteBoard1 = false, issues, failSet = false, failDelete = 
 }
 
 describe("boardSchluesselFuer", () => {
-  it("app:magenta-os -> Board 1, alles andere -> Board 2", () => {
-    expect(boardSchluesselFuer(["app:magenta-os"])).toBe("magenta");
-    expect(boardSchluesselFuer(["type:bug", "app:magenta-os"])).toBe("magenta");
-    expect(boardSchluesselFuer(["app:agency-os"])).toBe("fabrik");
-    expect(boardSchluesselFuer(["app:staffhub"])).toBe("fabrik");
+  it("app:beispiel-a -> Board 1, alles andere -> Board 2", () => {
+    expect(boardSchluesselFuer(["app:beispiel-a"])).toBe("magenta");
+    expect(boardSchluesselFuer(["type:bug", "app:beispiel-a"])).toBe("magenta");
+    expect(boardSchluesselFuer(["app:beispiel-b"])).toBe("fabrik");
+    expect(boardSchluesselFuer(["app:beispiel-c"])).toBe("fabrik");
   });
 });
 
@@ -82,11 +82,11 @@ describe("planen (nur lesen)", () => {
     const plan = await planen(gql);
     const aktion = Object.fromEntries(plan.eintraege.map((e) => [`${e.repo}#${e.nummer}`, e.aktion]));
     expect(aktion).toEqual({
-      "drivenbysun/agency-os#4": "sortieren",
-      "ss-cowork-engineer/magenta-os#5": "spalte_fehlt", // Board 1 hat keine Spalte
-      "ss-cowork-engineer/staffhub#1": "sortieren",
-      "ss-cowork-engineer/staffhub#2": "schon_auf_board",
-      "ss-cowork-engineer/staffhub#3": "schon_auf_board", // liegt auf Board 1 -> nie anfassen
+      "beispiel-org/beispiel-repo-b#4": "sortieren",
+      "beispiel-owner/beispiel-repo-a#5": "spalte_fehlt", // Board 1 hat keine Spalte
+      "beispiel-owner/beispiel-repo-c#1": "sortieren",
+      "beispiel-owner/beispiel-repo-c#2": "schon_auf_board",
+      "beispiel-owner/beispiel-repo-c#3": "schon_auf_board", // liegt auf Board 1 -> nie anfassen
     });
     expect(schreib).toEqual([]);
   });
@@ -128,11 +128,11 @@ describe("ausfuehren (schreiben)", () => {
     const erg = await ausfuehren(gql, plan);
     expect(erg.fehler).toEqual([]);
     expect(erg.sortiert.map((e) => `${e.repo}#${e.nummer}`).sort()).toEqual([
-      "drivenbysun/agency-os#4",
-      "ss-cowork-engineer/magenta-os#5",
-      "ss-cowork-engineer/staffhub#1",
+      "beispiel-org/beispiel-repo-b#4",
+      "beispiel-owner/beispiel-repo-a#5",
+      "beispiel-owner/beispiel-repo-c#1",
     ]);
-    // staffhub#2 und #3 (schon auf Board) tauchen in keiner Schreib-Mutation auf
+    // beispiel-repo-c#2 und #3 (schon auf Board) tauchen in keiner Schreib-Mutation auf
     const angelegt = schreib.filter((s) => s[0] === "add").map((s) => s[2]);
     expect(angelegt.sort()).toEqual(["I1", "I4", "I5"]);
     // Spalte stimmt je Board
@@ -157,8 +157,8 @@ describe("ausfuehren (schreiben)", () => {
     // Zustand nach dem ersten Lauf: dieselben Issues liegen jetzt auf Boards
     const nachher = attrappe({
       issues: {
-        "ss-cowork-engineer/staffhub": [{ id: "I1", number: 1, title: "x", url: "u", projectItems: { nodes: [{ project: { id: "B2" } }] } }],
-        "drivenbysun/agency-os": [{ id: "I4", number: 4, title: "y", url: "u", projectItems: { nodes: [{ project: { id: "B2" } }] } }],
+        "beispiel-owner/beispiel-repo-c": [{ id: "I1", number: 1, title: "x", url: "u", projectItems: { nodes: [{ project: { id: "B2" } }] } }],
+        "beispiel-org/beispiel-repo-b": [{ id: "I4", number: 4, title: "y", url: "u", projectItems: { nodes: [{ project: { id: "B2" } }] } }],
       },
     });
     const plan2 = await planen(nachher.gql);
@@ -332,7 +332,7 @@ describe("lauf (Alarm)", () => {
     const r = await lauf({ scharf: true, json: false }, { gql, alarmFn, zustand: z, pause });
     aus();
     expect(r.exit).toBe(1);
-    expect(alarmFn).toHaveBeenCalledWith("gelb", expect.any(String), expect.stringContaining("staffhub#1"));
+    expect(alarmFn).toHaveBeenCalledWith("gelb", expect.any(String), expect.stringContaining("beispiel-repo-c#1"));
   });
 
   it("schliesst den Alarm mit gruen, wenn es nach gelb oder rot wieder laeuft", async () => {

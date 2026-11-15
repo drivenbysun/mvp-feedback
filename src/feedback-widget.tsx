@@ -46,13 +46,13 @@ export interface FeedbackWidgetProps {
   platformOptionLabel?: string;
   /**
    * Kleiner runder Käfer-Knopf statt der Pille mit Text-Label. Opt-in, damit
-   * bestehende Einbindungen unverändert bleiben (Sören, 31.08.2026: die
+   * bestehende Einbindungen unverändert bleiben (Produktentscheid 31.08.2026: die
    * grosse Pille lenkte zu sehr ab). Das Formular dahinter ist identisch.
    */
   compact?: boolean;
   /**
    * Wo der schwebende Knopf sitzt. Default unverändert unten rechts, damit
-   * bestehende Einbindungen gleich bleiben (Sören, agency-os, 01.09.2026:
+   * bestehende Einbindungen gleich bleiben (Produktentscheid 01.09.2026:
    * "bug button rechts weg und links unter versions nummer").
    */
   position?: "bottom-right" | "bottom-left";
@@ -66,14 +66,14 @@ export interface FeedbackWidgetProps {
   iconColor?: string;
   /**
    * Hintergrundfarbe des runden Knopfs bei `compactIcon="mono"`. Default
-   * "transparent" (unverändert). Sören, agency-os, 02.09.2026: "wie bei
-   * staffhub" — dort ein schwarzer Kreis hinter dem weissen Käfer-Icon.
+   * "transparent" (unverändert). Produktentscheid 02.09.2026: "wie bei
+   * App C" — dort ein schwarzer Kreis hinter dem weissen Käfer-Icon.
    */
   bgColor?: string;
   /**
    * Durchmesser des runden Knopfs in px, nur bei `compact`. Default 40
-   * (unverändert). Icon und Emoji skalieren proportional mit (Sören,
-   * agency-os, 02.09.2026: "käfer 30% grösser" → `size={52}`).
+   * (unverändert). Icon und Emoji skalieren proportional mit (Produktentscheid
+   * 02.09.2026: "käfer 30% grösser" → `size={52}`).
    */
   size?: number;
   /**
@@ -83,7 +83,7 @@ export interface FeedbackWidgetProps {
    * dimensioniert und eingefärbt mit, das Widget setzt es nur in den
    * runden Knopf. Grund: jede weitere feste Icon-Variante (nach emoji,
    * mono) hätte dieselbe Anfrage nur verschoben, statt sie zu lösen
-   * (agency-os, 06.09.2026: "wie bei StaffHub" — deren Knopf nutzt
+   * (06.09.2026: "wie bei App C" — deren Knopf nutzt
    * `@tabler/icons-react`, eine Bibliothek, die dieses Paket nicht
    * kennen soll).
    */
@@ -98,7 +98,7 @@ export interface FeedbackWidgetProps {
   minLength?: number;
   /**
    * Zeigt einen "Screenshot"-Knopf, der die Seite per html2canvas erfasst
-   * und eine Freihand-Markierung darüber erlaubt (aus StaffHubs Feedback-
+   * und eine Freihand-Markierung darüber erlaubt (aus dem Feedback-
    * Modul übernommen). Default false/nicht geladen -- `html2canvas` wird
    * nur bei tatsächlicher Nutzung per `import()` nachgeladen, damit Apps
    * ohne dieses Feature kein zusätzliches Gewicht bekommen.

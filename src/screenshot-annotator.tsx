@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 // Freihand-Markierung ueber einem bereits erfassten Screenshot (html2canvas-
 // Ergebnis kommt als HTMLCanvasElement rein). Bewusst NUR ein Stift, keine
 // Formen/Pfeile/Text -- der Zweck ist "worum es geht zeigen", kein Editor.
-// Aus StaffHubs eigenem Feedback-Modul uebernommen (dort das einzige der drei
+// Aus dem eigenen Feedback-Modul einer App uebernommen (dort das einzige der drei
 // Module mit Screenshot+Annotation), hier einmal statt pro App neu gebaut.
 
 const MAX_BREITE = 720; // Darstellungs- UND Canvas-Aufloesung zugleich --

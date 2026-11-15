@@ -44,7 +44,7 @@ describe("Kalender", () => {
   });
 });
 
-describe("Uhrzeit (Soeren 03.11.)", () => {
+describe("Uhrzeit (03.11.)", () => {
   it("Zeitpunkt mit Uhrzeit in der Zeitzone, reines Datum ohne", () => {
     expect(de.dateTime("2026-11-02T23:24:00Z")).toBe("3. Nov., 00:24");
     expect(createFormatter({ locale: "de", timeZone: "America/New_York" }).dateTime("2026-11-02T23:24:00Z")).toBe("2. Nov., 18:24");
@@ -98,7 +98,7 @@ describe("Stepper", () => {
   it("in Arbeit: zwei erledigt, einer aktuell, einer offen", () => {
     const s = en.steps(byId(1041), DEMO_RELEASES);
     expect(s.map((x) => x.state)).toEqual(["done", "done", "current", "future"]);
-    expect(s[1].sub).toBe("Oct 16 · by Sarah K.");
+    expect(s[1].sub).toBe("Oct 16 · by Kim Beispiel");
     expect(s[3].sub).toBe("planned Nov 12");
   });
   it("abgelehnt: nur Eingereicht und Abgelehnt, auch wenn die Meldung schon in Arbeit war", () => {
@@ -165,7 +165,7 @@ describe("Filtern und Zählen", () => {
 describe("Rückfrage", () => {
   it("offen, bis der Einreicher antwortet", () => {
     expect(openQuestion(byId(1041))?.id).toBe("c4");
-    const answered = { ...byId(1041), comments: [...byId(1041).comments, { id: "c5", author: DEMO_ME, at: "2026-10-27T08:00:00Z", text: "Chapter lead first." }] };
+    const answered = { ...byId(1041), comments: [...byId(1041).comments, { id: "c5", author: DEMO_ME, at: "2026-10-27T08:00:00Z", text: "Team lead first." }] };
     expect(openQuestion(answered)).toBeUndefined();
   });
   it("Verlauf ohne Rückfrage zeigt alle Statuswechsel mit Datum", () => {
@@ -192,7 +192,7 @@ describe("Rückfrage", () => {
   });
   it("Verlauf: Dublette mit übernommenen Stimmen, Rückfrage nicht doppelt", () => {
     const a = en.activity(byId(1041), DEMO_REQUESTS, DEMO_RELEASES, DEMO_ME);
-    expect(a.some((e) => e.text === "#1018 “Order a new monitor” was merged into this request · 6 votes carried over")).toBe(true);
+    expect(a.some((e) => e.text === "#1018 “Order a new notebook” was merged into this request · 6 votes carried over")).toBe(true);
     expect(a.some((e) => e.comment?.id === "c4")).toBe(false);
     expect(a[a.length - 1].text).toBe("Submitted by you · Oct 14");
   });
@@ -217,7 +217,7 @@ describe("Neuer Request", () => {
     isPublic: true,
     notify: true,
     attachments: [],
-    context: { portal: "People", pagePath: "/team/people/map", environment: "Chrome 130" },
+    context: { portal: "Directory", pagePath: "/directory/list", environment: "Chrome 130" },
   };
   it("Pflichtfelder", () => {
     expect(validateDraft({ title: "ab", description: "" })).toEqual(["titleTooShort", "descriptionMissing"]);
@@ -237,7 +237,7 @@ describe("Neuer Request", () => {
     expect(t.split("\n")[0]).toBe("Excel export shows names");
     expect(t).toContain("Expected: Masked");
     expect(t).toContain("Severity: blocks");
-    expect(t).toContain("Page: /team/people/map");
+    expect(t).toContain("Page: /directory/list");
     expect(t).not.toContain("Public:");
   });
 });

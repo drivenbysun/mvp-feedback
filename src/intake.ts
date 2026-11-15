@@ -6,13 +6,18 @@ const DEFAULT_ATTACHMENT_TAG = "feedback-attachments";
 export const DEFAULT_COLUMN_NAME = "User Request";
 
 // ============================================================
-// Generischer GitHub-Intake (aus dem Magenta-OS-Muster extrahiert, aber
+// Generischer GitHub-Intake (aus dem Muster einer App extrahiert, aber
 // vollständig CONFIG-getrieben — keine hartkodierten Repo-/Board-IDs).
 // Best-effort: wirft nie; ohne Token oder bei Teil-Fehlern still degradieren.
 // Nur serverseitig aufrufen (nutzt den Token aus process.env).
 // ============================================================
 
 type GhJson = Record<string, unknown>;
+
+// Haengt GitHub, haengt sonst der Request der App mit (Serverless-Limit, offene Verbindung). Nach Ablauf bricht
+// fetch ab, der Aufruf faellt in den bestehenden best-effort-Zweig (null). Uploads duerfen laenger dauern.
+const GITHUB_TIMEOUT_MS = 10_000;
+const GITHUB_UPLOAD_TIMEOUT_MS = 30_000;
 
 async function ghRest(
   token: string,
@@ -30,6 +35,7 @@ async function ghRest(
       },
       body: body ? JSON.stringify(body) : undefined,
       cache: "no-store",
+      signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
     });
     if (!res.ok) return null;
     return (await res.json()) as GhJson;
@@ -45,6 +51,7 @@ async function ghGraphql(token: string, query: string, variables: GhJson): Promi
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ query, variables }),
       cache: "no-store",
+      signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
     });
     if (!res.ok) return null;
     const json = (await res.json()) as { data?: GhJson; errors?: unknown };
@@ -105,6 +112,7 @@ async function uploadAttachmentAsset(
         },
         body: bytes,
         cache: "no-store",
+        signal: AbortSignal.timeout(GITHUB_UPLOAD_TIMEOUT_MS),
       },
     );
     if (!res.ok) return null;
@@ -223,7 +231,7 @@ function buildBody(input: IntakeInput): string {
 // ── Low-Level-Primitive ─────────────────────────────────────────────────────
 // createBoardIssue: legt ein Issue an (Labels sichergestellt), hängt es best-
 // effort aufs Board und setzt die Ziel-Spalte. Token wird DIREKT übergeben —
-// so kann jeder Consumer seine eigene Token-Auflösung nutzen (Magenta-Chain).
+// so kann jeder Consumer seine eigene Token-Auflösung nutzen (z. B. eine Kette mehrerer Variablen).
 // Wirft nie; teilbare GitHub-Plumbing für submitFeedback UND fremde Adapter.
 export async function createBoardIssue(input: CreateBoardIssueInput): Promise<IntakeResult> {
   const { token, repo } = input;
@@ -278,7 +286,7 @@ async function submitFeedbackOnce(config: FeedbackConfig, input: IntakeInput): P
   if (!token) return { ok: false, error: "no token configured" };
 
   // Serverseitig erzwungen -- ein `required`-Feld im Client allein reicht
-  // nicht, ein Leerzeichen erfuellt das schon (agency-os' Luecke).
+  // nicht, ein Leerzeichen erfuellt das schon (Luecke einer frueheren Einbindung).
   const minLength = config.minLength ?? 10;
   const text = input.text?.trim() ?? "";
   if (text.length < minLength) {

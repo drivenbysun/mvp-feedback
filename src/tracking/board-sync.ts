@@ -18,7 +18,7 @@ export interface BoardStatusItem {
   linkedPullRequests?: number[];
 }
 
-/** Soeren E469 (31.10.): Someday = „Angenommen, ohne Termin". */
+/** E469 (31.10.): Someday = „Angenommen, ohne Termin". */
 export const BOARD_COLUMN_TO_TRACKING: Record<string, RequestStatus> = {
   "User Request": "submitted",
   New: "submitted",

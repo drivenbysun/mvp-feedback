@@ -1,11 +1,11 @@
-// Seiten-Pfad fuer eine Meldung, bereinigt -- OHNE Herkunft (Sören, 03.09.:
+// Seiten-Pfad fuer eine Meldung, bereinigt -- OHNE Herkunft (Produktentscheid 03.09.:
 // "seitenpfad sollte reichen"), OHNE Erlaubnisliste fuer Parameter (Query und
 // Hash werden komplett verworfen). Eine gepflegte Liste geht irgendwann
 // auseinander, die leere Menge muss nie gepflegt werden.
 //
 // Grund: Wiederherstellungs-/Einladungslinks und OAuth-Callbacks tragen
 // Einmal-Kennungen in Abfrageparametern und hinter "#" (z.B.
-// "/auth/callback?code=…&next=…", gefunden bei StaffHub). Landet die volle
+// "/auth/callback?code=…&next=…", gefunden in einer App). Landet die volle
 // URL ungefiltert in einer Meldung und von dort in einem GitHub-Issue, liegt
 // ein Zugangsschluessel an einem Ort, fuer den er nie gedacht war -- Loeschen
 // in der Datenbank holt ihn aus dem Issue nicht zurueck.
@@ -21,7 +21,7 @@
 // Seiten-Angabe scheitern. Bei Muell oder leerer Eingabe kommt ein leerer
 // oder bestmoeglich gekuerzter String zurueck, nie ein Fehler.
 //
-// Vorlage: staffhubs bereinigeSeiteUrl (Commit fe51261, origin/main).
+// Vorlage: bereinigeSeiteUrl einer der ursprünglichen Apps.
 export function sanitizePagePath(value: string | null | undefined): string {
   const input = value ?? "";
   try {

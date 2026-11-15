@@ -2,7 +2,7 @@
 
 Wiederverwendbares Feedback-Widget (Bug/Feature) für die **drivenbysun MVP-Factory**.
 Eine In-App-Meldung wird als **GitHub-Issue** angelegt (Labels `type:bug`/`type:feature`
-+ ein Projekt-Label wie `app:agency-os`) und best-effort aufs gemeinsame **MVP-Board**
++ ein Projekt-Label wie `app:beispiel`) und best-effort aufs gemeinsame **MVP-Board**
 gelegt. Alles Projektspezifische kommt als **Config** rein — kein hartkodierter Wert.
 
 ## Nutzung (jedes MVP)
@@ -24,8 +24,8 @@ export async function sendFeedback(fd: FormData) {
   const session = await getSession();
   await submitFeedback(
     {
-      repo: "drivenbysun/agency-os",
-      appLabel: "app:agency-os",
+      repo: "beispiel-org/beispiel-repo",
+      appLabel: "app:beispiel",
       boardProjectId: "PVT_...",        // gemeinsames MVP-Board (optional)
       statusFieldId: "PVTSSF_...",       // optional
       columnName: "User Request",        // optional, Default "User Request" (per Name aufgelöst)
@@ -49,7 +49,7 @@ import { sendFeedback } from "./feedback-action";
 
 Standardmäßig eine Pille mit Text-Label unten rechts. Mit `compact` stattdessen
 ein kleiner runder Knopf (🐞) — das Formular dahinter ist identisch, nur der
-Aufmacher ist unauffälliger (Sören/agency-os, 31.08.2026):
+Aufmacher ist unauffälliger (Produktentscheid 31.08.2026):
 ```tsx
 <FeedbackWidget action={sendFeedback} brandColor="#e20074" compact />
 ```
@@ -112,14 +112,14 @@ const seite = sanitizePagePath(eingehenderWert);
 ```
 
 ## Mindestlänge & Rate-Limit (serverseitig)
-Aus dem Vergleich der drei ursprünglichen Implementierungen (agency-os, magenta-os,
-StaffHub) übernommen, statt dass jede App das für sich neu baut:
+Aus dem Vergleich der drei ursprünglichen Implementierungen (App A, App B,
+App C) übernommen, statt dass jede App das für sich neu baut:
 
 ```ts
 await submitFeedback(
   {
-    repo: "drivenbysun/agency-os",
-    appLabel: "app:agency-os",
+    repo: "beispiel-org/beispiel-repo",
+    appLabel: "app:beispiel",
     minLength: 15,                              // Default: 10 Zeichen
     rateLimit: { max: 3, windowMs: 60_000 },     // Default: kein Limit
   },
@@ -163,7 +163,7 @@ Prozess** wie das Rate-Limit; Fehlversuche werden nicht gemerkt). Der Speicher
 Doppelklick und schnelle Wiederholung ab, keine Wiederholung nach einem Neustart.
 
 ## Screenshot + Markierung (`allowScreenshot`)
-Aus StaffHubs eigenem Feedback-Modul übernommen (dort das einzige der drei mit dieser
+Aus dem eigenen Feedback-Modul einer App übernommen (dort das einzige der drei mit dieser
 Funktion). Erfasst die Seite per `html2canvas` und erlaubt eine Freihand-Markierung
 (ein Stift, keine Formen/Text — Zweck ist "worum es geht zeigen", kein Bildeditor)
 direkt im Widget, bevor sie als Anhang mitgeschickt wird:
@@ -179,7 +179,7 @@ die das Feature nicht einschalten, bekommen kein zusätzliches Bundle-Gewicht.
 still no-op (best-effort).
 
 ## Rückkanal / Request-Status (`mvp-feedback/return-channel`)
-Framework-agnostische Domänenlogik für den Einreicher-Rückkanal (aus Magenta OS
+Framework-agnostische Domänenlogik für den Einreicher-Rückkanal (aus einer App
 #1431 extrahiert): Board-Spalte → nutzerfreundliche Status-Stufe, plus Overlay für
 offene Team-Rückfragen (`awaitingReply` = Einreicher ist am Zug). Keine DB, kein
 React, kein GitHub — der Consumer liefert die Daten, das Paket leitet den Zustand ab.
@@ -255,17 +255,17 @@ unbekannt), zeigt die Seite „Keine Berechtigung“ ohne Inhalte und ohne zu ve
   anderer, und ist vorausgewählt, solange `defaultScope` fehlt. Was ein Nutzer sehen darf, entscheidet die App mit
   `requests`, das Paket filtert in diesem Reiter nicht.
 - `headerExtra` liegt im Bereich des Pakets, dort gilt dessen Knopf-Reset. Eigene Knöpfe dort inline stylen oder
-  mit eigener Klasse höherer Spezifität; reine Tailwind-Klassen verlieren (Hinweis agency-os).
+  mit eigener Klasse höherer Spezifität; reine Tailwind-Klassen verlieren (Hinweis aus einer App).
 
 Einzeln nutzbar: `<NewRequestDialog>` (nur der Melde-Dialog), `<NotificationBell>`,
 `<NotificationToast>`. Beispieldaten fürs Ausprobieren: `mvp-feedback/tracking/fixtures`.
 
 ### Status-Rückweg vom Board (ab 0.9.0)
-Wandert die Karte auf dem Board weiter, ändert sich der Status beim Melder von selbst (Soeren E469):
+Wandert die Karte auf dem Board weiter, ändert sich der Status beim Melder von selbst (E469):
 Next/Todo → Angenommen · Someday → Angenommen, ohne Termin · In Progress/Review → In Arbeit ·
 Done (PROD) oder erledigt geschlossen → Live · „nicht geplant“/Dublette geschlossen → Abgelehnt.
 
-Der Board-Status-Job (Mac mini, `scripts/board-status-job.mjs --ziel <app>`) schickt den Board-Stand an
+Der Board-Status-Job (Job-Rechner, `scripts/board-status-job.mjs --ziel <app>`) schickt den Board-Stand an
 `PUT /api/board-status` der App. Die App braucht nur die Ticket-Nummer je Meldung und diesen Route-Handler:
 
 ```ts

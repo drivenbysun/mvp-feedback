@@ -12,7 +12,7 @@ export interface UserRef {
 }
 
 /**
- * Feinere Stufe innerhalb des Status (A512, Soeren 03.11.): Code fertig und Auf DEV gehören zu „In Arbeit“.
+ * Feinere Stufe innerhalb des Status (A512, 03.11.): Code fertig und Auf DEV gehören zu „In Arbeit“.
  * Wird nur gespeichert, wenn GitHub sie belegt (verknüpfter PR bzw. Spalte „Review (DEV)“).
  */
 export type RequestStage = RequestStatus | "code_ready" | "on_dev";
