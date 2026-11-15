@@ -14,7 +14,7 @@ describe("sanitizePagePath", () => {
     expect(sanitizePagePath("https://app.example/dashboard?filter=offen#abschnitt")).toBe("/dashboard");
   });
 
-  it("der reale Fall: OAuth-Callback mit code-Parameter (StaffHub, 02.09.)", () => {
+  it("der reale Fall: OAuth-Callback mit code-Parameter (02.09.)", () => {
     expect(sanitizePagePath("https://app.example/auth/callback?code=EINMAL-GEHEIMNIS&next=/dashboard")).toBe("/auth/callback");
   });
 
@@ -58,7 +58,7 @@ describe("sanitizePagePath", () => {
     expect(vonClient).toBe("/portal/rechnungen");
   });
 
-  it("traegt keine Herkunft mehr (Soerens Entscheidung: nur der Pfad reicht)", () => {
+  it("traegt keine Herkunft mehr (Produktentscheid: nur der Pfad reicht)", () => {
     const ergebnis = sanitizePagePath("https://app.example/dashboard");
     expect(ergebnis).not.toContain("app.example");
     expect(ergebnis).not.toMatch(/^https?:/);

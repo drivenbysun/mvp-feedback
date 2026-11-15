@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Board-Status-Job fuer magenta-os (Schnittstelle: magenta-os #1976, Teil b).
-// Laeuft auf dem Mac mini mit dem gh-Login des Servers; die Stages brauchen
+// Board-Status-Job: Board-Stand -> PUT {stage}/api/board-status der App, Verschiebe-Auftraege der App -> Board.
+// Laeuft auf dem Job-Rechner mit dessen gh-Login; die Stages brauchen
 // dadurch keinen GitHub-Token mehr, nur einen eigenen BOARD_STATUS_KEY je Stage.
 //
 //   node scripts/board-status-job.mjs --stages dev,test    (ohne --stages: nichts live)
@@ -9,7 +9,8 @@
 //   --zeigen                                                im Trockenlauf jede Karte auflisten
 //   --ziel agency                                           anderes Ziel als magenta (siehe ZIELE)
 //
-// Lesen:     alle app:magenta-os-Issues von Board 1 -> PUT {stage}/api/board-status
+// Hosts, Repos und Eigentuemer kommen aus der lokalen Datei (scripts/lokale-konfig.mjs), im Repo stehen Platzhalter.
+// Lesen:     alle Issues des Ziel-Repos von seinem Board -> PUT {stage}/api/board-status
 // Schreiben: GET {stage}/api/board-moves -> Karte verschieben -> POST .../result
 // Schluessel: ~/.fabrik/keys/board-status-key-<stage>.txt (600). Nie loggen, nie im Alarmtext.
 
@@ -18,24 +19,25 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ghGraphql, alarm as alarmSenden } from "./board-einsortierer.mjs";
+import { hatPlatzhalter, lokaleKonfigLesen, LOKALE_KONFIG_PFAD, mitLokal } from "./lokale-konfig.mjs";
 
 export const KONFIG = {
   name: "magenta",
-  eigentuemer: "ss-cowork-engineer",
+  eigentuemer: "beispiel-owner",
   boardNummer: 1,
-  // null = alle Issues des Repos auf Board 1 (Architect 04.10.); ein Wert = nur Issues mit diesem Label.
+  // null = alle Issues des Repos auf Board 1; ein Wert = nur Issues mit diesem Label.
   label: null,
   // Done (PROD) nur senden, wenn das Issue so jung geschlossen wurde (7 = Fenster der PROD-Leiste): die App zeigt daraus die PROD-Leiste
-  // (firstSeenAt = erster Push) -- alte Karten wuerden dort als "gerade live" erscheinen (MAGENTA-OS 04.10.).
+  // (firstSeenAt = erster Push) -- alte Karten wuerden dort als "gerade live" erscheinen.
   doneTage: 7,
-  repo: "ss-cowork-engineer/magenta-os",
+  repo: "beispiel-owner/beispiel-repo-a",
   stages: {
-    dev: "https://magenta-os-dev.mhub.one",
-    test: "https://magenta-os-test.mhub.one",
-    prod: "https://magenta-os.mhub.one",
+    dev: "https://dev.example.com",
+    test: "https://test.example.com",
+    prod: "https://app.example.com",
   },
   schluesselDatei: (stage) => join(homedir(), `.fabrik/keys/board-status-key-${stage}.txt`),
-  // Stages, deren App `closedAt` je Item schon annimmt (MAGENTA c828371b, DEV 05.10.). Auf den anderen wuerde ein unbekanntes Feld ggf. den ganzen Sync mit 400 abweisen.
+  // Stages, deren App `closedAt` je Item schon annimmt. Auf den anderen wuerde ein unbekanntes Feld ggf. den ganzen Sync mit 400 abweisen.
   closedAtStages: ["dev"],
   maxItems: 2000,
   maxItemSeiten: 30,
@@ -60,7 +62,7 @@ export const KONFIG = {
   // Verschiebe-Auftraege der App abholen (GET /api/board-moves).
   mitSchreiben: true,
   // Issue-Zustand (state/stateReason) mitsenden: true = alle Stages, Liste = nur diese Stages.
-  // magenta: dev (Architect „dev ja“ 01.11.) und prod (A471, Soeren „passt“ 2026-11-01T02:02:01Z); test bleibt ohne.
+  // Ziel a: dev und prod freigegeben; test bleibt ohne.
   zustandFelder: ["dev", "prod"],
   // Geschlossene Karten ohne Spalte senden (Schema der App muss status:null erlauben).
   zustandOhneSpalte: false,
@@ -68,16 +70,15 @@ export const KONFIG = {
   ausgenommen: {},
 };
 
-// agency-os (E469, Soeren 31.10.): Board 2, nur app:agency-os, Status-Rueckweg ueber mvp-feedback createBoardStatusHandler.
-// PROD nach DEV-Bild und Go des Architect (01.11.); gesendet wird nur, wenn launchd --stages prod mitgibt.
-// #355/#356 (Soerens Testmeldungen) seit 01.11. freigegeben: er will den automatischen Ablauf vollstaendig sehen.
+// Ziel b: Board 2, nur Issues mit dem Label des Ziels, Status-Rueckweg ueber mvp-feedback createBoardStatusHandler.
+// Gesendet wird nur an die Stages, die der Aufruf mit --stages mitgibt.
 export const AGENCY = {
   ...KONFIG,
   name: "agency",
   boardNummer: 2,
-  label: "app:agency-os",
-  repo: "drivenbysun/agency-os",
-  stages: { dev: "https://agency-dev.staffhub.digital", prod: "https://agency.staffhub.digital" },
+  label: "app:beispiel-b",
+  repo: "beispiel-org/beispiel-repo-b",
+  stages: { dev: "https://dev-b.example.com", prod: "https://b.example.com" },
   schluesselDatei: (stage) => join(homedir(), `.fabrik/keys/board-status-key-agency-${stage}.txt`),
   closedAtStages: ["dev", "test", "prod"],
   // Status liegt dauerhaft in der App: geschlossene Karten immer senden (live/abgelehnt).
@@ -86,7 +87,7 @@ export const AGENCY = {
   mitSchreiben: false,
   zustandFelder: true,
   zustandOhneSpalte: true,
-  // A512 („Code fertig“): verknuepfte PRs an dev und prod (DEV-Bild abgenommen 03.11., E513 auf PROD).
+  // „Code fertig“: verknuepfte PRs an dev und prod.
   prStufen: ["dev", "prod"],
   ausgenommen: {},
 };
@@ -413,9 +414,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   };
   const zi = argv.indexOf("--ziel");
   const zielName = zi >= 0 ? argv[zi + 1] : "magenta";
-  const konfig = ZIELE[zielName];
-  if (!konfig) {
+  if (!ZIELE[zielName]) {
     console.error(`unbekanntes Ziel: ${zielName} (${Object.keys(ZIELE).join(", ")})`);
+    process.exit(1);
+  }
+  const konfig = mitLokal(ZIELE[zielName], lokaleKonfigLesen()?.ziele?.[zielName]);
+  if (hatPlatzhalter(konfig)) {
+    console.error(`lokale Konfiguration fuer Ziel ${zielName} fehlt (${LOKALE_KONFIG_PFAD()}), im Repo stehen nur Platzhalter`);
     process.exit(1);
   }
   // launchd haengt nur an: Log ab 1 MB leeren (O_APPEND, der Deskriptor bleibt gueltig).

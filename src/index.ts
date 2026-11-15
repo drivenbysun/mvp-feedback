@@ -8,7 +8,7 @@ export type { FeedbackConfig, IntakeInput, IntakeResult, IntakeKind, StoreAttach
 // koennen. Client-Aufruf: sanitizePagePath(window.location.href).
 export { sanitizePagePath } from "./page-path";
 
-// Rückkanal-Domänenlogik (framework-agnostisch, aus Magenta #1431 extrahiert).
+// Rückkanal-Domänenlogik (framework-agnostisch, aus einer App extrahiert).
 // Auch als eigener Subpath `mvp-feedback/return-channel` verfügbar.
 export {
   mapRequestStatus,

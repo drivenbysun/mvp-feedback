@@ -4,7 +4,7 @@ import { _rateLimitZuruecksetzen } from "./rate-limit";
 import type { FeedbackConfig } from "./config";
 
 const BASIS_CONFIG: FeedbackConfig = {
-  repo: "drivenbysun/test-repo",
+  repo: "beispiel-org/beispiel-repo",
   appLabel: "app:test",
   token: "fake-token",
 };
@@ -198,5 +198,21 @@ describe("submitFeedback -- Anhaenge", () => {
       { kind: "bug", text: "genug Zeichen fuer die Pruefung", attachments: [PNG] },
     );
     expect(hochgeladen(a)).toHaveLength(0);
+  });
+});
+
+describe("GitHub-Aufrufe mit Zeitlimit (Sicherheits-Sweep 15.11.)", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("jeder fetch an GitHub traegt ein AbortSignal; ein Abbruch endet als Fehler, nicht als Haenger", async () => {
+    _rateLimitZuruecksetzen();
+    const spy = vi.spyOn(global, "fetch").mockImplementation(async (_url, init) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    });
+    const ergebnis = await submitFeedback(BASIS_CONFIG, { kind: "bug", text: "genug Zeichen fuer die Pruefung" });
+    expect(ergebnis.ok).toBe(false);
+    expect(spy.mock.calls.length).toBeGreaterThan(0);
+    for (const [url] of spy.mock.calls) expect(String(url)).toMatch(/^https:\/\/(api|uploads)\.github\.com\//);
   });
 });

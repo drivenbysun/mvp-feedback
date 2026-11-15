@@ -84,7 +84,7 @@ describe("Nur lesen", () => {
   });
 });
 
-describe("Reiter „Alle“ (allScope, Fehler aus Sörens PROD-Test zu A681)", () => {
+describe("Reiter „Alle“ (allScope, Fehler aus PROD-Test zu A681)", () => {
   const fremdPrivat = DEMO_REQUESTS.find((r) => !r.isPublic && r.createdBy.id !== DEMO_ME.id && !r.followedByMe)!;
   const ohneScope = { ...basis, defaultScope: undefined };
   it("ohne allScope: drei Reiter, fremde private Meldung nirgends", () => {

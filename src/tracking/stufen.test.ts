@@ -49,7 +49,7 @@ describe("Stufe aus dem Board (A512)", () => {
 describe("Leiste zeigt nur belegte Schritte", () => {
   it("voller Weg: sechs Schritte mit Uhrzeit, aktuell Auf DEV", () => {
     const r = mit([
-      { status: "accepted", at: "2026-11-03T08:05:00Z", by: { id: "s", name: "Sarah K." } },
+      { status: "accepted", at: "2026-11-03T08:05:00Z", by: { id: "s", name: "Kim Beispiel" } },
       { status: "in_progress", at: "2026-11-03T09:30:00Z" },
       { status: "in_progress", stage: "code_ready", pr: 381, at: "2026-11-04T14:12:00Z" },
       { status: "in_progress", stage: "on_dev", at: "2026-11-04T15:40:00Z" },
@@ -59,7 +59,7 @@ describe("Leiste zeigt nur belegte Schritte", () => {
     expect(s.map((x) => x.state)).toEqual(["done", "done", "done", "done", "current", "future"]);
     expect(s.map((x) => x.sub)).toEqual([
       "3. Nov., 00:24",
-      "3. Nov., 09:05 · von Sarah K.",
+      "3. Nov., 09:05 · von Kim Beispiel",
       "3. Nov., 10:30",
       "4. Nov., 15:12 · PR #381",
       "4. Nov., 16:40 · zum Testen",

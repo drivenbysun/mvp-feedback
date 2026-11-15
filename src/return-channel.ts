@@ -1,7 +1,7 @@
 // ============================================================
-// Rückkanal-Domänenlogik (opt-in, aus Magenta OS #668/#1257/#1431 extrahiert).
+// Rückkanal-Domänenlogik (opt-in, aus einer App extrahiert).
 // FRAMEWORK-AGNOSTISCH: keine DB, kein React, kein GitHub — nur reine,
-// unit-testbare Ableitungen. Consumer (Magenta, Agency OS …) verdrahten diese
+// unit-testbare Ableitungen. Consumer verdrahten diese
 // Logik mit ihrer eigenen Persistenz (Slice 13.2: FeedbackStore-Adapter).
 //
 // Zwei Bausteine:
@@ -99,7 +99,7 @@ export function overlayStatus(
 
 // Aus einer flachen Liste von Thread-Nachrichten (beliebige Herkunft) die
 // Schlüssel (`${kind}-${requestId}`) mit OFFENER Rückfrage bestimmen — für den
-// Batch-Fall „Overlay über viele Requests" (wie Magentas getOpenClarificationKeys).
+// Batch-Fall „Overlay über viele Requests" (wie getOpenClarificationKeys einer App).
 export function openClarificationKeys<
   T extends { kind: string; requestId: string; direction: ClarificationDirection; createdAt: Date },
 >(messages: T[]): Set<string> {

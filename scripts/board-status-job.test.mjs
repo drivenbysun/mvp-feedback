@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { AGENCY, KONFIG, ZIELE, boardLesen, fuerStage, lauf, moveAusfuehren, qBoard, standSenden } from "./board-status-job.mjs";
 
-// WICHTIG: Attrappen, keine echten Stages. Die HTTP-Formen folgen magenta-os #1976 (Entwurf);
+// WICHTIG: Attrappen, keine echten Stages. Die HTTP-Formen folgen der Schnittstelle der Apps (Entwurf);
 // sobald DEV die Endpunkte hat, muss ein Lauf gegen DEV diese Annahmen bestaetigen.
 
-const LABEL = [{ name: "app:magenta-os", color: "00ff00" }];
-function knoten(id, nr, status, { labels = LABEL, state = "OPEN", repo = "ss-cowork-engineer/magenta-os" } = {}) {
+const LABEL = [{ name: "app:beispiel-a", color: "00ff00" }];
+function knoten(id, nr, status, { labels = LABEL, state = "OPEN", repo = "beispiel-owner/beispiel-repo-a" } = {}) {
   return {
     id,
     content: { number: nr, title: `Karte ${nr}`, url: `https://github.com/${repo}/issues/${nr}`, state, repository: { nameWithOwner: repo }, updatedAt: `2026-10-0${(nr % 9) + 1}T00:00:00Z`, labels: { nodes: labels } },
@@ -54,8 +54,8 @@ function umgebung(extra = {}) {
 }
 
 describe("boardLesen / fuerStage", () => {
-  it("nimmt nur Karten aus magenta-os mit app:magenta-os, nicht andere Repos", async () => {
-    const { gql } = boardAttrappe([knoten("a", 1, "Todo"), knoten("x", 2, "Todo", { repo: "drivenbysun/agency-os" })]);
+  it("nimmt nur Karten aus dem Ziel-Repo mit app:beispiel-a, nicht andere Repos", async () => {
+    const { gql } = boardAttrappe([knoten("a", 1, "Todo"), knoten("x", 2, "Todo", { repo: "beispiel-org/beispiel-repo-b" })]);
     expect((await boardLesen(gql)).items.map((i) => i.number)).toEqual([1]);
   });
 
@@ -67,7 +67,7 @@ describe("boardLesen / fuerStage", () => {
       { id: "d", content: {}, status: null }, // Draft/PR ohne Issue-Inhalt
     ];
     const { gql } = boardAttrappe(items, { seiten: 2 });
-    const b = await boardLesen(gql, { ...KONFIG, label: "app:magenta-os" });
+    const b = await boardLesen(gql, { ...KONFIG, label: "app:beispiel-a" });
     expect(b.items.map((i) => i.number)).toEqual([1, 3]);
     expect(b.items[1].status).toBe("Done (PROD)");
     expect(b.optionen["Review (TEST)"]).toBe("opt-Review (TEST)");
@@ -79,7 +79,7 @@ describe("boardLesen / fuerStage", () => {
   });
 
   it("kappt auf 2000: Erledigtes zuerst, Rest nach Aktualitaet", () => {
-    const mk = (n, status) => ({ itemId: `i${n}`, number: n, title: "t", url: `https://github.com/ss-cowork-engineer/magenta-os/issues/${n}`, status, labels: [], updatedAt: `2026-01-01T00:00:${String(n % 60).padStart(2, "0")}Z` });
+    const mk = (n, status) => ({ itemId: `i${n}`, number: n, title: "t", url: `https://github.com/beispiel-owner/beispiel-repo-a/issues/${n}`, status, labels: [], updatedAt: `2026-01-01T00:00:${String(n % 60).padStart(2, "0")}Z` });
     const items = [mk(1, "Done (PROD)"), mk(2, "Done (PROD)"), mk(3, "Todo"), mk(4, "Todo")];
     const r = fuerStage(items, { ...KONFIG, maxItems: 3 });
     expect(r.gekappt).toBe(1);
@@ -90,13 +90,13 @@ describe("boardLesen / fuerStage", () => {
 });
 
 describe("fuerStage: Form der App", () => {
-  const gut = (n = 1) => ({ number: n, title: "t", url: `https://github.com/ss-cowork-engineer/magenta-os/issues/${n}`, status: "Todo", labels: [{ name: "app:magenta-os", color: "0e8a16" }], updatedAt: "" });
+  const gut = (n = 1) => ({ number: n, title: "t", url: `https://github.com/beispiel-owner/beispiel-repo-a/issues/${n}`, status: "Todo", labels: [{ name: "app:beispiel-a", color: "0e8a16" }], updatedAt: "" });
 
   it("laesst Items ohne gueltige URL, Farbe oder Status aus und schickt den Rest", () => {
     const items = [
       gut(1),
       { ...gut(2), url: "https://github.com/anderer/repo/issues/2" },
-      { ...gut(3), url: "https://github.com/ss-cowork-engineer/magenta-os/issues/3/../../x" },
+      { ...gut(3), url: "https://github.com/beispiel-owner/beispiel-repo-a/issues/3/../../x" },
       { ...gut(4), labels: [{ name: "x", color: "f00" }] },
       { ...gut(5), status: null },
     ];
@@ -236,8 +236,8 @@ describe("lauf", () => {
     await lauf({ stages: ["dev", "test"], nurLesen: true }, { ...umgebung(), gql, fetchFn });
     const puts = aufrufe.filter((a) => a.methode === "PUT");
     expect(puts.map((p) => [new URL(p.url).host, p.auth])).toEqual([
-      ["magenta-os-dev.mhub.one", "Bearer KEY-dev"],
-      ["magenta-os-test.mhub.one", "Bearer KEY-test"],
+      ["dev.example.com", "Bearer KEY-dev"],
+      ["test.example.com", "Bearer KEY-test"],
     ]);
     expect(puts[0].body.items.map((i) => i.number)).toEqual([1, 2]);
     expect(JSON.stringify(puts[0].body)).not.toContain("KEY-");
@@ -415,7 +415,7 @@ describe("lauf", () => {
   it("Alarm-Zaehler laeuft je Stage getrennt", async () => {
     const { gql } = boardAttrappe(items);
     const env = umgebung({ konfig: { ...SCHNELL, alarmNachFehlern: 2 } });
-    const fetchFn = vi.fn(async (url) => ({ status: url.includes("-dev.") ? 500 : 200, json: async () => ({ ok: !url.includes("-dev.") }) }));
+    const fetchFn = vi.fn(async (url) => ({ status: url.includes("//dev.") ? 500 : 200, json: async () => ({ ok: !url.includes("//dev.") }) }));
     await lauf({ stages: ["dev", "test"], nurLesen: true }, { ...env, gql, fetchFn });
     await lauf({ stages: ["dev", "test"], nurLesen: true }, { ...env, gql, fetchFn });
     expect(env.alarmFn).toHaveBeenCalledTimes(1);
@@ -427,20 +427,20 @@ describe("lauf", () => {
     const { gql } = boardAttrappe(gemischt);
     expect(KONFIG.label).toBeNull();
     expect((await boardLesen(gql, KONFIG)).items.map((i) => i.number)).toEqual([1, 2]);
-    expect((await boardLesen(gql, { ...KONFIG, label: "app:magenta-os" })).items.map((i) => i.number)).toEqual([1]);
+    expect((await boardLesen(gql, { ...KONFIG, label: "app:beispiel-a" })).items.map((i) => i.number)).toEqual([1]);
   });
 
   it("Done (PROD) aelter als doneTage geht nicht an die App, junges, offenes und solches ohne closedAt schon", () => {
     const jetzt = Date.now();
     const vor = (tage) => new Date(jetzt - tage * 86400000).toISOString();
-    const mk = (n, status, closedAt) => ({ itemId: `i${n}`, number: n, title: "t", url: `https://github.com/ss-cowork-engineer/magenta-os/issues/${n}`, status, labels: [], updatedAt: "", closedAt });
+    const mk = (n, status, closedAt) => ({ itemId: `i${n}`, number: n, title: "t", url: `https://github.com/beispiel-owner/beispiel-repo-a/issues/${n}`, status, labels: [], updatedAt: "", closedAt });
     const r = fuerStage([mk(1, "Done (PROD)", vor(45)), mk(2, "Done (PROD)", vor(5)), mk(3, "Done (PROD)", null), mk(4, "Todo", vor(90))], KONFIG);
     expect(r.items.map((i) => i.number)).toEqual([2, 3, 4]);
     expect(r.zuAlt).toBe(1);
   });
 
   it("closedAt geht nur mit mitClosedAt mit, nur im Format ISO-8601 UTC mit Z (sonst weggelassen)", () => {
-    const mk = (n, closedAt) => ({ itemId: `i${n}`, number: n, title: "t", url: `https://github.com/ss-cowork-engineer/magenta-os/issues/${n}`, status: "Done (PROD)", labels: [], updatedAt: "", closedAt });
+    const mk = (n, closedAt) => ({ itemId: `i${n}`, number: n, title: "t", url: `https://github.com/beispiel-owner/beispiel-repo-a/issues/${n}`, status: "Done (PROD)", labels: [], updatedAt: "", closedAt });
     const board = [mk(1, "2026-10-04T20:00:00Z"), mk(2, "2026-10-04T20:00:00.123Z"), mk(3, "2026-10-04T22:00:00+02:00"), mk(4, "2026"), mk(5, null)];
     const mit = fuerStage(board, { ...KONFIG, doneTage: 3650 }, true).items;
     expect(mit.map((i) => i.closedAt)).toEqual(["2026-10-04T20:00:00Z", "2026-10-04T20:00:00.123Z", undefined, undefined, undefined]);
@@ -451,7 +451,7 @@ describe("lauf", () => {
 
   it("standSenden schickt closedAt nur an Stages aus closedAtStages (Standard: nur dev)", async () => {
     expect(KONFIG.closedAtStages).toEqual(["dev"]);
-    const board = { items: [{ itemId: "i1", number: 1, title: "t", url: "https://github.com/ss-cowork-engineer/magenta-os/issues/1", status: "Done (PROD)", labels: [], updatedAt: "", closedAt: new Date().toISOString().replace(/\.\d+Z$/, "Z") }] };
+    const board = { items: [{ itemId: "i1", number: 1, title: "t", url: "https://github.com/beispiel-owner/beispiel-repo-a/issues/1", status: "Done (PROD)", labels: [], updatedAt: "", closedAt: new Date().toISOString().replace(/\.\d+Z$/, "Z") }] };
     const gesendet = {};
     const fetchFn = async (url, opt) => {
       gesendet[url] = JSON.parse(opt.body);
@@ -470,15 +470,15 @@ describe("lauf", () => {
 
 describe("Ziel agency (E469)", () => {
   const karte = (o) => ({
-    itemId: "x", number: 1, title: "BUG: t", body: "", url: "https://github.com/drivenbysun/agency-os/issues/1",
-    status: "Next", labels: [{ name: "app:agency-os", color: "ededed" }], updatedAt: "", closedAt: null, state: "OPEN", stateReason: null, ...o,
+    itemId: "x", number: 1, title: "BUG: t", body: "", url: "https://github.com/beispiel-org/beispiel-repo-b/issues/1",
+    status: "Next", labels: [{ name: "app:beispiel-b", color: "ededed" }], updatedAt: "", closedAt: null, state: "OPEN", stateReason: null, ...o,
   });
   it("sendet state/stateReason, auch alte geschlossene Karten und Karten ohne Spalte", () => {
     const { items } = fuerStage(
       [
         karte({ number: 1 }),
-        karte({ number: 2, url: "https://github.com/drivenbysun/agency-os/issues/2", status: "Done (PROD)", state: "CLOSED", stateReason: "COMPLETED", closedAt: "2025-01-01T00:00:00Z" }),
-        karte({ number: 3, url: "https://github.com/drivenbysun/agency-os/issues/3", status: null, state: "CLOSED", stateReason: "NOT_PLANNED" }),
+        karte({ number: 2, url: "https://github.com/beispiel-org/beispiel-repo-b/issues/2", status: "Done (PROD)", state: "CLOSED", stateReason: "COMPLETED", closedAt: "2025-01-01T00:00:00Z" }),
+        karte({ number: 3, url: "https://github.com/beispiel-org/beispiel-repo-b/issues/3", status: null, state: "CLOSED", stateReason: "NOT_PLANNED" }),
       ],
       AGENCY, true, "dev",
     );
@@ -489,7 +489,7 @@ describe("Ziel agency (E469)", () => {
     ]);
   });
   it("magenta: Zustandsfelder auf dev und prod, nicht test; closedAt nur dev; nie spaltenlose Karten", () => {
-    const k = karte({ url: "https://github.com/ss-cowork-engineer/magenta-os/issues/1", state: "CLOSED", stateReason: "NOT_PLANNED", closedAt: new Date().toISOString().replace(/\.\d+Z$/, "Z") });
+    const k = karte({ url: "https://github.com/beispiel-owner/beispiel-repo-a/issues/1", state: "CLOSED", stateReason: "NOT_PLANNED", closedAt: new Date().toISOString().replace(/\.\d+Z$/, "Z") });
     expect(fuerStage([k], KONFIG, false, "dev").items[0]).toMatchObject({ state: "CLOSED", stateReason: "NOT_PLANNED" });
     expect(fuerStage([k], KONFIG, false, "prod").items[0]).toMatchObject({ state: "CLOSED", stateReason: "NOT_PLANNED" });
     expect(fuerStage([k], KONFIG, false, "test").items[0]).not.toHaveProperty("state");
@@ -498,12 +498,12 @@ describe("Ziel agency (E469)", () => {
     expect(fuerStage([{ ...k, status: null }], KONFIG, false, "dev").items).toHaveLength(0);
   });
   it("ausgenommen sperrt Nummern je Stage", () => {
-    const ks = [355, 356, 357].map((n) => karte({ number: n, url: `https://github.com/drivenbysun/agency-os/issues/${n}` }));
+    const ks = [355, 356, 357].map((n) => karte({ number: n, url: `https://github.com/beispiel-org/beispiel-repo-b/issues/${n}` }));
     expect(fuerStage(ks, { ...AGENCY, ausgenommen: { prod: [355, 356] } }, true, "prod").items.map((i) => i.number)).toEqual([357]);
     expect(fuerStage(ks, AGENCY, true, "prod").items).toHaveLength(3);
   });
   it("agency: dev und prod eingetragen, keine Sperren, Board-Moves aus", () => {
-    expect(AGENCY.stages).toEqual({ dev: "https://agency-dev.staffhub.digital", prod: "https://agency.staffhub.digital" });
+    expect(AGENCY.stages).toEqual({ dev: "https://dev-b.example.com", prod: "https://b.example.com" });
     expect(AGENCY.ausgenommen).toEqual({});
     expect(AGENCY.mitSchreiben).toBe(false);
     expect(ZIELE.magenta).toBe(KONFIG);
@@ -517,8 +517,8 @@ describe("Ziel agency (E469)", () => {
     const gespeichert = [];
     const gql = vi.fn(async () => ({
       user: { projectV2: { id: "P2", field: { id: "F", options: [] }, items: { pageInfo: { hasNextPage: false }, nodes: [
-        { id: "i1", status: { name: "Next" }, content: { number: 9, title: "FR: x", body: "", url: "https://github.com/drivenbysun/agency-os/issues/9", state: "OPEN", stateReason: null, closedAt: null, updatedAt: "", repository: { nameWithOwner: "drivenbysun/agency-os" }, labels: { nodes: [{ name: "app:agency-os", color: "ededed" }] } } },
-        { id: "i2", status: { name: "Next" }, content: { number: 5, title: "fremd", body: "", url: "https://github.com/ss-cowork-engineer/staffhub/issues/5", state: "OPEN", repository: { nameWithOwner: "ss-cowork-engineer/staffhub" }, labels: { nodes: [{ name: "app:staffhub", color: "ededed" }] } } },
+        { id: "i1", status: { name: "Next" }, content: { number: 9, title: "FR: x", body: "", url: "https://github.com/beispiel-org/beispiel-repo-b/issues/9", state: "OPEN", stateReason: null, closedAt: null, updatedAt: "", repository: { nameWithOwner: "beispiel-org/beispiel-repo-b" }, labels: { nodes: [{ name: "app:beispiel-b", color: "ededed" }] } } },
+        { id: "i2", status: { name: "Next" }, content: { number: 5, title: "fremd", body: "", url: "https://github.com/beispiel-owner/beispiel-repo-c/issues/5", state: "OPEN", repository: { nameWithOwner: "beispiel-owner/beispiel-repo-c" }, labels: { nodes: [{ name: "app:beispiel-c", color: "ededed" }] } } },
       ] } } },
     }));
     const r = await lauf({ stages: ["dev"] }, {
@@ -526,7 +526,7 @@ describe("Ziel agency (E469)", () => {
       zustand: { lesen: () => ({}), schreiben: (z) => gespeichert.push(z) },
     });
     expect(r.exit).toBe(0);
-    expect(aufrufe).toEqual(["PUT https://agency-dev.staffhub.digital/api/board-status"]);
+    expect(aufrufe).toEqual(["PUT https://dev-b.example.com/api/board-status"]);
     const body = JSON.parse(fetchFn.mock.calls[0][1].body);
     expect(body.items.map((i) => i.number)).toEqual([9]);
     expect(gespeichert.every((z) => !("dev" in z))).toBe(true);
@@ -535,7 +535,7 @@ describe("Ziel agency (E469)", () => {
 
 describe("Verknuepfte PRs (A512)", () => {
   const karte = (o) => ({
-    itemId: "x", number: 7, title: "FR: t", body: "", url: "https://github.com/drivenbysun/agency-os/issues/7",
+    itemId: "x", number: 7, title: "FR: t", body: "", url: "https://github.com/beispiel-org/beispiel-repo-b/issues/7",
     status: "In Progress", labels: [], updatedAt: "", closedAt: null, state: "OPEN", stateReason: null, prs: [381], ...o,
   });
   it("nur agency fragt PRs ab, magenta-Abfrage unveraendert", () => {
@@ -550,7 +550,7 @@ describe("Verknuepfte PRs (A512)", () => {
   });
   it("boardLesen nimmt nur offene oder gemergte PRs", async () => {
     const gql = async () => ({ user: { projectV2: { id: "P", field: { id: "F", options: [] }, items: { pageInfo: { hasNextPage: false }, nodes: [
-      { id: "i", status: { name: "In Progress" }, content: { number: 7, title: "x", body: "", url: "https://github.com/drivenbysun/agency-os/issues/7", state: "OPEN", repository: { nameWithOwner: "drivenbysun/agency-os" }, labels: { nodes: [{ name: "app:agency-os", color: "ededed" }] },
+      { id: "i", status: { name: "In Progress" }, content: { number: 7, title: "x", body: "", url: "https://github.com/beispiel-org/beispiel-repo-b/issues/7", state: "OPEN", repository: { nameWithOwner: "beispiel-org/beispiel-repo-b" }, labels: { nodes: [{ name: "app:beispiel-b", color: "ededed" }] },
         closedByPullRequestsReferences: { nodes: [{ number: 1, state: "OPEN" }, { number: 2, state: "CLOSED" }, { number: 3, state: "MERGED" }] } } },
     ] } } } });
     const b = await boardLesen(gql, AGENCY);
